@@ -288,6 +288,9 @@ async function runApp() {
           await js(`HG.onImages(${J(id)},${J(urls)})`);
         }
         break;
+      case "open":
+        if (typeof p.url === "string" && p.url.startsWith("https://")) Safari.open(p.url);
+        break;
       case "draft":
         if (p.session) writeJSON(P.draft, p.session);
         else if (fm.fileExists(P.draft)) fm.remove(P.draft);
@@ -412,6 +415,10 @@ function webApp() {
     workout: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 1.8M9.5 3h5"/></svg>',
     history: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>',
   };
+  const CLUB_URL = "https://www.instagram.com/7amclub__/";
+  const LOGO = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="var(--p-red)"/>' +
+    '<circle cx="12" cy="12" r="7.6" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3"/>' +
+    '<circle cx="12" cy="12" r="2.8" fill="var(--bg)"/></svg>';
   const TABS = [
     { key: "train", label: "Train" },
     { key: "workout", label: "Workout" },
@@ -655,8 +662,13 @@ function webApp() {
       <p class="muted small">Keep this screen open until it finishes. Photos already downloaded are skipped next time.</p></div>`;
   }
 
+  function appHeader() {
+    return `<header class="brand"><span class="brand-mark">${LOGO}</span><span class="brand-name">Go2FGym</span>
+      <button class="club" data-a="club" aria-label="Inspired by the 7AM Club community. Opens their Instagram.">Inspired by <b>7AM Club</b> <span aria-hidden="true">↗</span></button></header>`;
+  }
+
   function renderLibraryEmpty() {
-    return `<h1 class="hero">Go2FGym</h1>
+    return `${appHeader()}<h1 class="hero">Set up your gym</h1>
       <p class="lead">Download the exercise library once: about 450 exercises for ${esc(eqNames())}, each with two photos and step-by-step instructions (roughly 35 MB). After that, everything works offline.</p>
       ${S.sync ? syncProgress() : `<button class="primary" data-a="sync">Download library</button>`}
       <p class="muted small">Source: free-exercise-db on GitHub, released into the public domain.</p>`;
@@ -675,7 +687,7 @@ function webApp() {
     const resume = s && s.entries.length
       ? `<button class="resume" data-a="tab" data-v="workout"><span>Workout in progress</span><b>${plural(s.entries.length, "exercise")}, ${elapsed(s.start)}</b></button>`
       : "";
-    return `<h1 class="hero">Train what today?</h1>
+    return `${appHeader()}<h1 class="hero">Train what today?</h1>
       <p class="lead">Load one or more plates.</p>
       ${resume}
       <div class="rack">${GROUPS.map(plateHTML).join("")}</div>
@@ -956,6 +968,7 @@ function webApp() {
       render();
     },
     export: () => send("export", {}),
+    club: () => send("open", { url: CLUB_URL }),
     frame: (v) => {
       const st = $(".stage");
       if (st) st.dataset.frame = v;
@@ -1048,7 +1061,13 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 h2{font:700 20px/1.2 var(--display);margin:22px 0 8px}
 p{margin:0 0 10px}
 .muted{color:var(--muted)}.small{font-size:14px}
-.hero{font:800 46px/.95 var(--display);margin:26px 0 8px;letter-spacing:-.01em}
+.hero{font:800 46px/.95 var(--display);margin:14px 0 8px;letter-spacing:-.01em}
+.brand{display:flex;align-items:center;gap:8px;min-height:44px;padding-top:4px;border-bottom:1px solid var(--line)}
+.brand-mark svg{display:block;width:24px;height:24px}
+.brand-name{font:800 19px/1 var(--display);margin-right:auto;letter-spacing:-.01em}
+.club{font-size:13px;color:var(--muted);padding:10px 0 10px 8px;white-space:nowrap}
+.club b{color:var(--ink);font-weight:700}
+.club span{color:var(--accent);font-weight:700}
 .title{font:800 32px/1.02 var(--display);margin:6px 0 12px;letter-spacing:-.01em}
 .lead{color:var(--muted);margin-bottom:16px}
 .bar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5}

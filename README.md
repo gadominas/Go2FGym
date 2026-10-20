@@ -3,6 +3,8 @@
 **Go to the f\*\*\*g gym.** A home-gym coach for your iPhone: pick the muscles, see how each exercise is done, log every set, and watch the numbers go up.
 Runs in [Scriptable](https://scriptable.app) and works fully offline.
 
+> Inspired by the early risers of the **[7AM Club](https://www.instagram.com/7amclub__/)** community.
+
 <p align="center">
   <img src="docs/screenshots/01-pick-muscles.png" width="230" alt="Pick muscle groups by tapping weight plates">
   <img src="docs/screenshots/03-exercise-demo.png" width="230" alt="Exercise with start-to-end photo demo">
