@@ -44,8 +44,12 @@ const P = {
   meta: fm.joinPath(ROOT, "library-meta.json"),
   history: fm.joinPath(ROOT, "history.json"),
   draft: fm.joinPath(ROOT, "draft.json"),
+  consent: fm.joinPath(ROOT, "disclaimer-accepted.json"),
 };
 for (const d of [ROOT, IMG]) if (!fm.fileExists(d)) fm.createDirectory(d, true);
+
+// Bump when the disclaimer text changes materially, so users accept it again.
+const DISCLAIMER_VERSION = 1;
 
 const J = (v) => JSON.stringify(v).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 const sleep = (ms) => new Promise((r) => Timer.schedule(ms, false, r));
@@ -261,7 +265,8 @@ async function runApp() {
     history,
     draft: readJSON(P.draft, null),
     meta: readJSON(P.meta, null),
-    cfg: { unit: CONFIG.unit, rest: CONFIG.restSeconds, equipment: CONFIG.equipment },
+    consent: readJSON(P.consent, null),
+    cfg: { unit: CONFIG.unit, rest: CONFIG.restSeconds, equipment: CONFIG.equipment, disclaimerVersion: DISCLAIMER_VERSION },
   };
 
   const wv = new WebView();
@@ -287,6 +292,9 @@ async function runApp() {
             }
           await js(`HG.onImages(${J(id)},${J(urls)})`);
         }
+        break;
+      case "accept":
+        writeJSON(P.consent, { version: p.version, acceptedAt: new Date().toISOString() });
         break;
       case "open":
         if (typeof p.url === "string" && p.url.startsWith("https://")) Safari.open(p.url);
@@ -435,6 +443,9 @@ function webApp() {
     imgs: {}, pending: new Set(), queue: new Set(),
     rest: { end: 0, total: 0, beeped: true },
     openSession: null, armed: null, sync: null,
+    consent: !!(BOOT.consent && BOOT.consent.version === CFG.disclaimerVersion),
+    showDisclaimer: false,
+    acceptedAt: BOOT.consent ? BOOT.consent.acceptedAt : null,
     scroll: {}, outbox: [],
   };
 
@@ -667,6 +678,23 @@ function webApp() {
       <button class="club" data-a="club" aria-label="Inspired by the 7AM Club community. Opens their Instagram.">Inspired by <b>7AM Club</b> <span aria-hidden="true">↗</span></button></header>`;
   }
 
+  function renderDisclaimer() {
+    const first = !S.consent;
+    return `${first ? appHeader() : `<header class="bar"><button class="back" data-a="close-disclaimer">‹ Back</button></header>`}
+      <h1 class="${first ? "hero" : "title"}">Train at your own risk</h1>
+      <div class="disclaimer">
+        <p>Go2FGym shows exercise photos and instructions for general information only. It is not medical, physiotherapy or coaching advice.</p>
+        <p>Check with a doctor before you start, especially if you have an injury or a health condition, are pregnant, or haven't trained for a while.</p>
+        <p>Learn each movement with light weights, warm up, use safety stops or a spotter for heavy barbell work, and stop straight away if you feel pain, dizziness or shortness of breath.</p>
+        <p>The exercise data comes from a third-party public-domain source and may contain mistakes.</p>
+        <p><b>You use this app and do these exercises entirely at your own risk.</b> To the fullest extent permitted by law, the author is not responsible or liable for any injury, health problem, loss or damage arising from using the app or doing the exercises.</p>
+      </div>
+      ${first
+        ? `<button class="primary" data-a="accept">I understand and accept</button>
+           <p class="muted small">You'll only be asked once. The full text is always available from the Train screen.</p>`
+        : `<p class="muted small">Accepted ${S.acceptedAt ? esc(day(S.acceptedAt)) : "earlier"}.</p>`}`;
+  }
+
   function renderLibraryEmpty() {
     return `${appHeader()}<h1 class="hero">Set up your gym</h1>
       <p class="lead">Download the exercise library once: about 450 exercises for ${esc(eqNames())}, each with two photos and step-by-step instructions (roughly 35 MB). After that, everything works offline.</p>
@@ -694,7 +722,8 @@ function webApp() {
       <button class="primary" data-a="browse" ${sel ? "" : "disabled"}>${sel ? `Show ${countFor(selectedMuscles())} exercises` : "Pick a muscle group"}</button>
       <footer class="lib">
         <p class="muted small">${S.lib.length} exercises for ${esc(eqNames())} stored on this phone${S.meta ? `, updated ${esc(day(S.meta.syncedAt))}` : ""}. Photos and instructions from free-exercise-db (public domain).</p>
-        ${S.sync ? syncProgress() : `<button class="link" data-a="sync">Update library</button>`}
+        <div class="row">${S.sync ? "" : `<button class="link" data-a="sync">Update library</button>`}<button class="link danger" data-a="disclaimer">Disclaimer</button></div>
+        ${S.sync ? syncProgress() : ""}
       </footer>`;
   }
 
@@ -749,6 +778,7 @@ function webApp() {
       <h2>Works</h2><div class="tags">${muscleTags(e.pm)}</div>
       ${e.sm.length ? `<h2>Also helps</h2><div class="tags quiet">${muscleTags(e.sm)}</div>` : ""}
       <h2>How to do it</h2><ol class="steps">${e.ins.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
+      <p class="note">Use a weight you can control with good form, and stop if anything hurts. You train at your own risk.</p>
       ${last ? `<h2>Last time</h2><p>${esc(day(last.date))}: ${esc(fmtSets(last.sets))}</p>` : ""}
       ${trendFor(e.id)}
       <div class="cta">${on
@@ -827,17 +857,19 @@ function webApp() {
   }
 
   // ------------------------------------------------ render
-  const viewKey = () => (S.detailId ? `detail:${S.detailId}` : S.tab === "train" ? `train:${S.trainView}` : S.tab);
+  const viewKey = () => (!S.consent ? "consent" : S.showDisclaimer ? "disclaimer" : S.detailId ? `detail:${S.detailId}` : S.tab === "train" ? `train:${S.trainView}` : S.tab);
   let currentKey = null;
   function render() {
     const key = viewKey();
     const same = currentKey === key;
     const y = window.scrollY;
     if (currentKey && !same) S.scroll[currentKey] = y;
-    $app.innerHTML = S.detailId ? renderDetail()
+    $app.innerHTML = !S.consent || S.showDisclaimer ? renderDisclaimer()
+      : S.detailId ? renderDetail()
       : S.tab === "train" ? (S.trainView === "list" && S.lib.length ? renderList() : renderHome())
       : S.tab === "workout" ? renderWorkout() : renderHistory();
-    renderTabs();
+    if (S.consent) renderTabs();
+    else $tabs.innerHTML = "";
     window.scrollTo(0, same ? y : key.startsWith("detail:") ? 0 : S.scroll[key] || 0);
     currentKey = key;
     if (S.detailId) want(S.detailId);
@@ -881,7 +913,15 @@ function webApp() {
   const ij = (v) => v.split(":").map(Number);
 
   const A = {
-    tab: (v) => { S.detailId = null; S.tab = v; S.armed = null; render(); },
+    accept: () => {
+      S.consent = true;
+      S.acceptedAt = new Date().toISOString();
+      send("accept", { version: CFG.disclaimerVersion });
+      render();
+    },
+    disclaimer: () => { S.showDisclaimer = true; render(); },
+    "close-disclaimer": () => { S.showDisclaimer = false; render(); },
+    tab: (v) => { S.showDisclaimer = false; S.detailId = null; S.tab = v; S.armed = null; render(); },
     plate: (v) => { S.groups.has(v) ? S.groups.delete(v) : S.groups.add(v); S.muscle = "all"; render(); },
     browse: () => { if (S.groups.size) { S.trainView = "list"; S.q = ""; render(); } },
     home: () => { S.trainView = "home"; render(); },
@@ -1130,6 +1170,9 @@ p{margin:0 0 10px}
 .spark polyline{fill:none;stroke:var(--accent);stroke-width:2.5;vector-effect:non-scaling-stroke}
 .spark circle{fill:var(--accent)}
 .cta{margin-top:18px}
+.note{font-size:14px;color:var(--muted);border-left:3px solid var(--accent);padding:2px 0 2px 10px;margin:4px 0 0}
+.disclaimer{background:var(--surface);border-radius:14px;padding:16px 16px 6px;margin:8px 0 6px}
+.disclaimer p{margin:0 0 12px}
 .empty{padding:30px 0}.empty-line{padding:20px 4px;color:var(--muted)}
 .entry{background:var(--surface);border-radius:14px;padding:12px 14px 4px;margin:0 0 12px}
 .entry-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}

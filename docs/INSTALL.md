@@ -20,8 +20,9 @@ Go2FGym runs inside **Scriptable**, a free iOS app that runs JavaScript. You don
 ## 2. Download the exercise library (once)
 
 1. Connect to **Wi-Fi** and run **Go2FGym**.
-2. Tap **Download library**. It fetches the exercise list and two photos for each exercise, about 35 MB in total.
-3. **Keep the screen open** until it says the library is ready. That takes a few minutes.
+2. Read the safety disclaimer and tap **I understand and accept**. You're only asked once; it's always available under **Train › Disclaimer**.
+3. Tap **Download library**. It fetches the exercise list and two photos for each exercise, about 35 MB in total.
+4. **Keep the screen open** until it says the library is ready. That takes a few minutes.
 
 If it's interrupted, just tap **Download library** or **Update library** again. Photos you already have are skipped.
 

@@ -85,7 +85,12 @@ After changing `equipment`, tap **Update library** to download the extra photos.
 
 Exercise data and photos: **[free-exercise-db](https://github.com/yuhonas/free-exercise-db)** by yuhonas, released into the public domain, based on [exercises.json](https://github.com/wrkout/exercises.json) by Ollie Jennings.
 
-Go2FGym gives exercise instructions, not medical advice. Warm up, learn the form with light weights, and use safety stops or a spotter for heavy barbell work.
+
+## Disclaimer
+
+**Use Go2FGym and do these exercises at your own risk.** The app gives general exercise information, not medical, physiotherapy or coaching advice, and the exercise data may contain mistakes. Check with a doctor before starting, especially with an injury or health condition. Learn each movement with light weights, use safety stops or a spotter for heavy barbell work, and stop if you feel pain.
+
+To the fullest extent permitted by law, the author is not responsible or liable for any injury, health problem, loss or damage arising from using the app or doing the exercises. The app asks you to accept this on first launch.
 
 ## License
 
