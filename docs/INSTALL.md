@@ -21,7 +21,7 @@ Go2FGym runs inside **Scriptable**, a free iOS app that runs JavaScript. You don
 
 1. Connect to **Wi-Fi** and run **Go2FGym**.
 2. Read the safety disclaimer and tap **I understand and accept**. You're only asked once; it's always available under **Train › Disclaimer**.
-3. Tap **Download library**. It fetches the exercise list and two photos for each exercise, about 35 MB in total.
+3. Tap **Download library**. It fetches the exercise list and two photos for each exercise, about 36 MB in total.
 4. **Keep the screen open** until it says the library is ready. That takes a few minutes.
 
 If it's interrupted, just tap **Download library** or **Update library** again. Photos you already have are skipped.
@@ -39,14 +39,14 @@ The widget shows your last workout and how many you've done this week. Tapping i
 
 ## 4. Optional: match your equipment
 
-By default the library contains exercises for **bodyweight, dumbbells and a barbell**. A flat bench is assumed; it isn't listed as separate equipment in the data.
+By default the library contains exercises for **bodyweight, dumbbells, a barbell and resistance bands**. A flat bench is assumed; it isn't listed as separate equipment in the data.
 
 To add more:
 
 1. In Scriptable, open `Go2FGym` for editing.
 2. In the `CONFIG` block at the top, add items to `equipment`, for example:
    ```js
-   equipment: ["body only", "dumbbell", "barbell", "kettlebells", "bands"],
+   equipment: ["body only", "dumbbell", "barbell", "bands", "kettlebells"],
    ```
    Available values: `body only`, `dumbbell`, `barbell`, `kettlebells`, `bands`, `e-z curl bar`, `medicine ball`, `exercise ball`, `foam roll`, `other`.
 3. Run Go2FGym and tap **Train › Update library**.

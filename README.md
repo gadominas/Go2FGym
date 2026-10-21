@@ -21,12 +21,12 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
 |---|---|
 | 🏋️ **Pick by muscle** | Tap the plates for chest, back, legs, shoulders, arms, glutes or core. You get only the exercises that train them. |
 | 🖼 **See it done** | A start-to-end photo demo, numbered steps, and the muscles each exercise works. |
-| 🏠 **Made for home** | 446 exercises for bodyweight, dumbbells and barbell. Own kettlebells, bands or an EZ bar? Add them with one line. |
+| 🏠 **Made for home** | 466 exercises for bodyweight, dumbbells, barbell and resistance bands. Own kettlebells or an EZ bar? Add them with one line. |
 | ✍️ **Fast logging** | Weight and reps are prefilled from last time. Change what's different, tap ✓, done. |
 | ⏱ **Rest timer** | Ticking a set starts a 90 s countdown with a beep. Add 30 s or skip. |
 | 📈 **Progress** | Each exercise shows your last performance and a trend of your estimated one-rep max. |
 | 🗓 **History** | Weekly totals, every past workout set by set, one-tap **Repeat this workout**, and CSV export. |
-| ✈️ **Offline** | One download of about 35 MB, then no network needed. |
+| ✈️ **Offline** | One download of about 36 MB, then no network needed. |
 | 💾 **Nothing lost** | An unfinished workout comes back when you reopen the app. History is mirrored to iCloud Drive. |
 | 📲 **Widget** | Your last workout and this week's count on the Home Screen. |
 | 🌗 **Light and dark** | Follows your iPhone's appearance. |
@@ -69,7 +69,7 @@ Settings live in the `CONFIG` block at the top of `Go2FGym.js`:
 |---|---|---|
 | `unit` | `"kg"` | Weight unit shown and exported |
 | `restSeconds` | `90` | Rest timer length |
-| `equipment` | bodyweight, dumbbell, barbell | Equipment you own. Also available: `kettlebells`, `bands`, `e-z curl bar`, `medicine ball`, `exercise ball`, `foam roll`, `other` |
+| `equipment` | bodyweight, dumbbell, barbell, bands | Equipment you own. Also available: `kettlebells`, `e-z curl bar`, `medicine ball`, `exercise ball`, `foam roll`, `other` |
 | `skipCategories` | strongman, olympic weightlifting | Exercise types hidden from the library |
 | `icloudBackup` | `true` | Mirror history to iCloud Drive › Scriptable › Go2FGym-backup |
 

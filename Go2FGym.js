@@ -20,10 +20,10 @@
 const CONFIG = {
   unit: "kg",
   restSeconds: 90,
-  // Equipment you own. Add any of: "kettlebells", "bands", "e-z curl bar",
+  // Equipment you own. Add any of: "kettlebells", "e-z curl bar",
   // "medicine ball", "exercise ball", "foam roll", "other". Then tap
   // "Update library" in the app to download the extra photos.
-  equipment: ["body only", "dumbbell", "barbell"],
+  equipment: ["body only", "dumbbell", "barbell", "bands"],
   // Categories that need a platform, coach or special gear.
   skipCategories: ["strongman", "olympic weightlifting"],
   dataUrl: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json",
@@ -414,7 +414,7 @@ function webApp() {
   ];
   const EQ_LABEL = {
     "body only": "Bodyweight", dumbbell: "Dumbbell", barbell: "Barbell", kettlebells: "Kettlebell",
-    bands: "Band", "e-z curl bar": "EZ bar", other: "Other", "medicine ball": "Medicine ball",
+    bands: "Bands", "e-z curl bar": "EZ bar", other: "Other", "medicine ball": "Medicine ball",
     "exercise ball": "Exercise ball", "foam roll": "Foam roller",
   };
   const LEVEL = { beginner: 0, intermediate: 1, expert: 2 };
@@ -697,10 +697,12 @@ function webApp() {
 
   function renderLibraryEmpty() {
     return `${appHeader()}<h1 class="hero">Set up your gym</h1>
-      <p class="lead">Download the exercise library once: about 450 exercises for ${esc(eqNames())}, each with two photos and step-by-step instructions (roughly 35 MB). After that, everything works offline.</p>
+      <p class="lead">Download the exercise library once: about 470 exercises for ${esc(eqNames())}, each with two photos and step-by-step instructions (roughly 36 MB). After that, everything works offline.</p>
       ${S.sync ? syncProgress() : `<button class="primary" data-a="sync">Download library</button>`}
       <p class="muted small">Source: free-exercise-db on GitHub, released into the public domain.</p>`;
   }
+
+  const missingPhotos = () => S.lib.filter((e) => !e.has).length;
 
   function plateHTML(g) {
     const on = S.groups.has(g.key);
@@ -722,6 +724,7 @@ function webApp() {
       <button class="primary" data-a="browse" ${sel ? "" : "disabled"}>${sel ? `Show ${countFor(selectedMuscles())} exercises` : "Pick a muscle group"}</button>
       <footer class="lib">
         <p class="muted small">${S.lib.length} exercises for ${esc(eqNames())} stored on this phone${S.meta ? `, updated ${esc(day(S.meta.syncedAt))}` : ""}. Photos and instructions from free-exercise-db (public domain).</p>
+        ${missingPhotos() && !S.sync ? `<p class="small"><b>${plural(missingPhotos(), "exercise")} ${missingPhotos() === 1 ? "has" : "have"} no photos yet.</b> Tap Update library to download them.</p>` : ""}
         <div class="row">${S.sync ? "" : `<button class="link" data-a="sync">Update library</button>`}<button class="link danger" data-a="disclaimer">Disclaimer</button></div>
         ${S.sync ? syncProgress() : ""}
       </footer>`;
