@@ -2,26 +2,17 @@
 // These must be at the very top of the file. Do not edit.
 // icon-color: red; icon-glyph: download;
 
-// Installs or updates "Go2FGym" from GitHub. Run it again any time to update.
-// Your workout history and exercise library are kept.
-const URL = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/Go2FGym.js';
-const NAME = 'Go2FGym';
-
-const req = new Request(URL);
+// Go2FGym installer: paste into a new Scriptable script and tap ▶.
+// Run it again any time to update. Your workouts and library are kept.
+const req = new Request("https://raw.githubusercontent.com/gadominas/Go2FGym/main/Go2FGym.js");
 const code = await req.loadString();
-if (!req.response || req.response.statusCode !== 200 || !code.includes('function webApp')) {
-  const a = new Alert();
-  a.title = 'Download failed';
-  a.message = `Could not download the script (HTTP ${req.response ? req.response.statusCode : '?'}). Check your connection and try again.`;
-  a.addAction('OK'); await a.present();
-} else {
+const ok = req.response.statusCode === 200 && code.includes("function webApp");
+if (ok) {
   let fm; try { fm = FileManager.iCloud(); } catch (e) { fm = FileManager.local(); }
-  const path = fm.joinPath(fm.documentsDirectory(), `${NAME}.js`);
-  const existed = fm.fileExists(path);
-  fm.writeString(path, code);
-  const a = new Alert();
-  a.title = existed ? 'Updated' : 'Installed';
-  a.message = `"${NAME}" is in your Scriptable library. Open it from the Scripts list.`;
-  a.addAction('OK'); await a.present();
+  fm.writeString(fm.joinPath(fm.documentsDirectory(), "Go2FGym.js"), code);
 }
-Script.complete();
+const alert = new Alert();
+alert.title = ok ? "Go2FGym is installed" : "Download failed";
+alert.message = ok ? "Open Go2FGym from your Scripts list." : "Check your internet connection and try again.";
+alert.addAction("OK");
+await alert.present();

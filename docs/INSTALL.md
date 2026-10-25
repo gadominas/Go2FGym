@@ -9,7 +9,7 @@ Go2FGym runs inside **Scriptable**, a free iOS app that runs JavaScript. You don
 ### Option A: installer (recommended, also used for updates)
 
 1. Open **Scriptable** and tap **+** to create a new script.
-2. Paste the contents of [`Install Go2FGym.js`](../Install%20Go2FGym.js) and tap **Run** (▶).
+2. Paste the installer from the [README](../README.md#install) (the same code as [`Install Go2FGym.js`](../Install%20Go2FGym.js)) and tap **Run** (▶).
 3. **Go2FGym** now appears in your Scripts list. You can delete the installer script or keep it for updates.
 
 ### Option B: manual

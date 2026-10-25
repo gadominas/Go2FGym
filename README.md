@@ -5,6 +5,31 @@ Runs in [Scriptable](https://scriptable.app) and works fully offline.
 
 > Inspired by the early risers of the **[7AM Club](https://www.instagram.com/7amclub__/)** community.
 
+## Install
+
+1. Get the free **[Scriptable](https://apps.apple.com/app/scriptable/id1405459188)** app.
+2. In Scriptable, tap **+**, paste the installer below, and tap **▶**.
+3. Open **Go2FGym**, accept the disclaimer, and tap **Download library** on Wi-Fi. It's about 36 MB, once; after that it works offline.
+
+```js
+// Go2FGym installer: paste into a new Scriptable script and tap ▶.
+// Run it again any time to update. Your workouts and library are kept.
+const req = new Request("https://raw.githubusercontent.com/gadominas/Go2FGym/main/Go2FGym.js");
+const code = await req.loadString();
+const ok = req.response.statusCode === 200 && code.includes("function webApp");
+if (ok) {
+  let fm; try { fm = FileManager.iCloud(); } catch (e) { fm = FileManager.local(); }
+  fm.writeString(fm.joinPath(fm.documentsDirectory(), "Go2FGym.js"), code);
+}
+const alert = new Alert();
+alert.title = ok ? "Go2FGym is installed" : "Download failed";
+alert.message = ok ? "Open Go2FGym from your Scripts list." : "Check your internet connection and try again.";
+alert.addAction("OK");
+await alert.present();
+```
+
+**Update:** run the installer again. Your workouts and library are kept. More help, the widget and troubleshooting: **[install guide](docs/INSTALL.md)**.
+
 <p align="center">
   <img src="docs/screenshots/01-pick-muscles.png" width="230" alt="Pick muscle groups by tapping weight plates">
   <img src="docs/screenshots/03-exercise-demo.png" width="230" alt="Exercise with start-to-end photo demo">
@@ -37,14 +62,6 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
   <img src="docs/screenshots/06-history.png" width="180" alt="Workout history">
   <img src="docs/screenshots/07-dark-mode.png" width="180" alt="Dark mode">
 </p>
-
-## Install
-
-1. Install the free **[Scriptable](https://apps.apple.com/app/scriptable/id1405459188)** app.
-2. In Scriptable, tap **+**, paste [`Install Go2FGym.js`](Install%20Go2FGym.js), and tap **Run** (▶).
-3. Open **Go2FGym**, tap **Download library** on Wi-Fi, and keep the screen open for a few minutes.
-
-Manual install, the widget, adding equipment, backups and troubleshooting: see the **[install guide](docs/INSTALL.md)**.
 
 ## Using it
 
