@@ -7,28 +7,17 @@ Runs in [Scriptable](https://scriptable.app) and works fully offline.
 
 ## Install
 
-1. Get the free **[Scriptable](https://apps.apple.com/app/scriptable/id1405459188)** app.
-2. In Scriptable, tap **+**, paste the installer below, and tap **▶**.
-3. Open **Go2FGym**, accept the disclaimer, and tap **Download library** on Wi-Fi. It's about 36 MB, once; after that it works offline.
+1. Get **[Scriptable](https://apps.apple.com/app/scriptable/id1405459188)** (free) from the App Store.
+2. In Scriptable tap **+**, paste this line and tap **▶︎**:
+   ```js
+   const s = await new Request("https://raw.githubusercontent.com/gadominas/Go2FGym/main/install.js").loadString(); await Function("module", "return (async () => {" + s + "\n})()")(module);
+   ```
+3. Tap **Open now**, accept the disclaimer, and tap **Download library** on Wi-Fi (about 36 MB, once). After that it works offline.
 
-```js
-// Go2FGym installer: paste into a new Scriptable script and tap ▶.
-// Run it again any time to update. Your workouts and library are kept.
-const req = new Request("https://raw.githubusercontent.com/gadominas/Go2FGym/main/Go2FGym.js");
-const code = await req.loadString();
-const ok = req.response.statusCode === 200 && code.includes("function webApp");
-if (ok) {
-  let fm; try { fm = FileManager.iCloud(); } catch (e) { fm = FileManager.local(); }
-  fm.writeString(fm.joinPath(fm.documentsDirectory(), "Go2FGym.js"), code);
-}
-const alert = new Alert();
-alert.title = ok ? "Go2FGym is installed" : "Download failed";
-alert.message = ok ? "Open Go2FGym from your Scripts list." : "Check your internet connection and try again.";
-alert.addAction("OK");
-await alert.present();
-```
-
-**Update:** run the installer again. Your workouts and library are kept. More help, the widget and troubleshooting: **[install guide](docs/INSTALL.md)**.
+- **Update:** run the same little script again. Workouts, history and the library are kept.
+- **Home Screen icon:** in Scriptable tap *⋯* on *Go2FGym* → *Add to Home Screen*.
+- **Manual install:** create a new script and paste the whole [`Go2FGym.js`](Go2FGym.js) instead.
+- Widget, extra equipment, backups and troubleshooting: **[install guide](docs/INSTALL.md)**.
 
 <p align="center">
   <img src="docs/screenshots/01-pick-muscles.png" width="230" alt="Pick muscle groups by tapping weight plates">

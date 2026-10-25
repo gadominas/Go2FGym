@@ -6,11 +6,14 @@ Go2FGym runs inside **Scriptable**, a free iOS app that runs JavaScript. You don
 
 ## 1. Install the script
 
-### Option A: installer (recommended, also used for updates)
+### Option A: one-line installer (recommended, also used for updates)
 
 1. Open **Scriptable** and tap **+** to create a new script.
-2. Paste the installer from the [README](../README.md#install) (the same code as [`Install Go2FGym.js`](../Install%20Go2FGym.js)) and tap **Run** (▶).
-3. **Go2FGym** now appears in your Scripts list. You can delete the installer script or keep it for updates.
+2. Paste this line and tap **Run** (▶︎):
+   ```js
+   const s = await new Request("https://raw.githubusercontent.com/gadominas/Go2FGym/main/install.js").loadString(); await Function("module", "return (async () => {" + s + "\n})()")(module);
+   ```
+3. Tap **Open now**. **Go2FGym** is now in your Scripts list, saved in the same folder as the little script. You can keep that script for updates or delete it.
 
 ### Option B: manual
 
@@ -35,7 +38,7 @@ From now on everything works offline.
 
 The widget shows your last workout and how many you've done this week. Tapping it opens the app.
 
-**Tip:** add Go2FGym to your Home Screen as an app-like shortcut. In the Shortcuts app, create a shortcut with Scriptable's **Run Script** action set to *Go2FGym*, then **Add to Home Screen**.
+**Tip:** for an app-like icon, tap *⋯* on *Go2FGym* in Scriptable, then *Add to Home Screen*.
 
 ## 4. Optional: match your equipment
 
@@ -55,7 +58,7 @@ You can also change `restSeconds` (default `90`) and `unit` (default `"kg"`) the
 
 ## Updating
 
-Run **Install Go2FGym** again. Your history and downloaded library are kept, because they live in a separate folder from the script.
+Run the one-line installer script again and tap **Update**. Your history and downloaded library are kept, because they live in a separate folder from the script.
 
 If you installed manually, replace the script's contents with the new `Go2FGym.js`. Any changes you made to `CONFIG` need to be made again.
 
