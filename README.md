@@ -42,8 +42,16 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
 | 🗓 **History** | Weekly totals, every past workout set by set, one-tap **Repeat this workout**, and CSV export. |
 | ✈️ **Offline** | One download of about 36 MB, then no network needed. |
 | 💾 **Nothing lost** | An unfinished workout comes back when you reopen the app. History is mirrored to iCloud Drive. |
+| ✨ **AI workout builder** | Say what to train (or let the AI decide), which equipment you have, how long and how hard. You get a plan from your own library with sets, reps, rest and weights based on your history. Review it, then start with one tap. |
+| ✨ **AI coach after each workout** | What went well, what to watch, which muscle groups to focus on next and how hard, when you've recovered, and a one-tap **Build this next workout**. |
 | 📲 **Widget** | Your last workout and this week's count on the Home Screen. |
 | 🌗 **Light and dark** | Follows your iPhone's appearance. |
+
+<p align="center">
+  <img src="docs/screenshots/08-ai-build-workout.png" width="180" alt="AI workout builder: muscles, equipment, time and intensity">
+  <img src="docs/screenshots/09-ai-plan.png" width="180" alt="AI-built workout plan with sets, weights and rest">
+  <img src="docs/screenshots/10-ai-coach.png" width="180" alt="AI coach analysis after a workout">
+</p>
 
 <p align="center">
   <img src="docs/screenshots/02-exercise-list.png" width="180" alt="Exercise list filtered by muscle and equipment">
@@ -51,6 +59,19 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
   <img src="docs/screenshots/06-history.png" width="180" alt="Workout history">
   <img src="docs/screenshots/07-dark-mode.png" width="180" alt="Dark mode">
 </p>
+
+## AI coach (optional)
+
+Uses the OpenAI API with **your own API key**. Everything else in the app works without it.
+
+1. Create a key at [platform.openai.com](https://platform.openai.com/api-keys).
+2. In Go2FGym tap **✨ Build a workout with AI**, paste the key and tap **Save**. It's stored in the iPhone's Keychain and only sent to OpenAI.
+3. Pick what to train, your equipment, 20 to 60 minutes and Easy, Moderate or Hard, add a note if you like ("lower back is sore"), and tap **Build workout**.
+4. Check the plan, then **Start this workout**. After **Finish workout** the AI coach reviews it automatically; the analysis is saved with the workout in **History**.
+
+The AI only chooses exercises from your library, keeps weights at or close to what you lifted last time, and avoids loading anything you mention in the note. Check every weight anyway: it can be wrong.
+
+**What's sent to OpenAI:** exercise names and muscles, your sets, weights and dates, the options you chose and your note. No name, account or location. Requests are billed to your OpenAI account. Remove the key under **Train › AI key**.
 
 ## Using it
 
@@ -64,6 +85,8 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
 | Add or remove a set | **Add set** copies the previous one; **×** removes a set |
 | Finish | **Finish workout**, then tap again to save |
 | Do a past workout again | **History**, open the workout, **Repeat this workout** |
+| Let AI build a workout | **Train › ✨ Build a workout with AI** |
+| Get AI feedback on a past workout | **History**, open it, **✨ Analyze with AI coach** |
 | Export | **History › Export CSV** |
 | Get new exercises or missing photos | **Train › Update library** |
 
@@ -78,13 +101,16 @@ Settings live in the `CONFIG` block at the top of `Go2FGym.js`:
 | `equipment` | bodyweight, dumbbell, barbell, bands | Equipment you own. Also available: `kettlebells`, `e-z curl bar`, `medicine ball`, `exercise ball`, `foam roll`, `other` |
 | `skipCategories` | strongman, olympic weightlifting | Exercise types hidden from the library |
 | `icloudBackup` | `true` | Mirror history to iCloud Drive › Scriptable › Go2FGym-backup |
+| `ai.model` | `"gpt-5.4-mini"` | OpenAI model for the AI coach |
+| `ai.reasoning` | `"low"` | `"low"` is quick; `"medium"` plans a bit more carefully but slower |
+| `ai.autoAnalyze` | `true` | Analyze each workout right after you finish it |
 
 After changing `equipment`, tap **Update library** to download the extra photos.
 
 ## Your data
 
 - **Everything stays on your phone.** No account, no server, no tracking.
-- The only network use is downloading the exercise library from GitHub.
+- Network use: downloading the exercise library from GitHub and, only if you add a key, the AI coach requests to OpenAI described above.
 - History is a plain JSON file in Scriptable's folder, with a copy in iCloud Drive if enabled.
 
 ## Credits
@@ -95,6 +121,8 @@ Exercise data and photos: **[free-exercise-db](https://github.com/yuhonas/free-e
 ## Disclaimer
 
 **Use Go2FGym and do these exercises at your own risk.** The app gives general exercise information, not medical, physiotherapy or coaching advice, and the exercise data may contain mistakes. Check with a doctor before starting, especially with an injury or health condition. Learn each movement with light weights, use safety stops or a spotter for heavy barbell work, and stop if you feel pain.
+
+Plans, weights and analysis from the optional AI coach are generated automatically by a language model and can be wrong.
 
 To the fullest extent permitted by law, the author is not responsible or liable for any injury, health problem, loss or damage arising from using the app or doing the exercises. The app asks you to accept this on first launch.
 

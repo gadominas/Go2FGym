@@ -56,6 +56,17 @@ To add more:
 
 You can also change `restSeconds` (default `90`) and `unit` (default `"kg"`) there.
 
+## 5. Optional: connect the AI coach
+
+The AI workout builder and post-workout coach use the OpenAI API with your own key. Requests are billed to your OpenAI account.
+
+1. Create an API key at [platform.openai.com › API keys](https://platform.openai.com/api-keys).
+2. In Go2FGym tap **Train › ✨ Build a workout with AI**, paste the key (it starts with `sk-`) and tap **Save**.
+
+The key is stored in the iOS Keychain on this iPhone and only sent to OpenAI. To remove it, tap **AI key** at the bottom of the Train screen, then tap again to confirm. If OpenAI rejects the key, the app removes it and asks for a new one.
+
+To change the model or switch off the automatic analysis after each workout, edit `ai` in the `CONFIG` block at the top of `Go2FGym.js`.
+
 ## Updating
 
 Run the one-line installer script again and tap **Update**. Your history and downloaded library are kept, because they live in a separate folder from the script.
@@ -87,6 +98,8 @@ Delete the **Go2FGym** script in Scriptable. The history backup lives in **Files
 | My workout disappeared after closing | Reopen the app; unfinished workouts are restored. A change made in the last second before closing might be lost. |
 | History is empty after reinstalling | Check that **iCloud Drive › Scriptable › Go2FGym-backup › history.json** exists, then run the app again |
 | A barbell exercise needs a squat rack I don't have | Skip it. The data doesn't separate rack and floor movements. |
+| "AI coach: …" error | The message comes from OpenAI. Check your key has credit and that you're online, then try again. |
+| AI asks for the key again | OpenAI rejected the saved key (expired or revoked). Paste a new one. |
 | The installer says "Download failed" | Check your connection. The script is downloaded from `raw.githubusercontent.com`. |
 
 Still stuck? Open an issue with a screenshot.

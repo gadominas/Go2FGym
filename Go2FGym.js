@@ -30,6 +30,12 @@ const CONFIG = {
   imageBase: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/",
   parallelDownloads: 6,
   icloudBackup: true, // mirror history.json to iCloud Drive/Scriptable/Go2FGym-backup
+  ai: {
+    // ✨ Optional AI coach via the OpenAI API (your own key, stored in the iOS Keychain).
+    model: "gpt-5.4-mini",
+    reasoning: "low", // "low" is quick; "medium" plans a little more carefully but slower
+    autoAnalyze: true, // analyze each workout right after you finish it (needs a key)
+  },
 };
 
 // ---------------------------------------------------------------- storage
@@ -49,7 +55,8 @@ const P = {
 for (const d of [ROOT, IMG]) if (!fm.fileExists(d)) fm.createDirectory(d, true);
 
 // Bump when the disclaimer text changes materially, so users accept it again.
-const DISCLAIMER_VERSION = 1;
+const DISCLAIMER_VERSION = 2;
+const KC_AI_KEY = "go2fgym-openai-key";
 
 const J = (v) => JSON.stringify(v).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 const sleep = (ms) => new Promise((r) => Timer.schedule(ms, false, r));
@@ -205,6 +212,44 @@ async function syncLibrary(report) {
   return meta;
 }
 
+// ---------------------------------------------------------------- AI (OpenAI Responses API)
+// Generic proxy: the web UI builds the prompt and schema; the key never leaves Scriptable.
+async function openai(p) {
+  if (!Keychain.contains(KC_AI_KEY)) return { needKey: true };
+  const req = new Request("https://api.openai.com/v1/responses");
+  req.method = "POST";
+  req.timeoutInterval = 90;
+  req.headers = { Authorization: `Bearer ${Keychain.get(KC_AI_KEY)}`, "Content-Type": "application/json" };
+  req.body = JSON.stringify({
+    model: CONFIG.ai.model,
+    instructions: p.instructions,
+    input: p.input,
+    reasoning: { effort: CONFIG.ai.reasoning },
+    text: { format: { type: "json_schema", name: p.name, strict: true, schema: p.schema } },
+  });
+  let res = null;
+  try {
+    res = await req.loadJSON();
+  } catch (e) {
+    const code0 = req.response && req.response.statusCode;
+    if (!code0) throw new Error("No connection to OpenAI. Check your internet and try again.");
+  }
+  const code = req.response && req.response.statusCode;
+  if (code === 401) {
+    Keychain.remove(KC_AI_KEY);
+    return { needKey: true };
+  }
+  if (code >= 400 || !res) throw new Error((res && res.error && res.error.message) || `OpenAI answered HTTP ${code}`);
+  let text = res.output_text || "";
+  if (!text && Array.isArray(res.output))
+    text = res.output.flatMap((o) => o.content || []).filter((c) => c.type === "output_text").map((c) => c.text).join("");
+  try {
+    return { data: JSON.parse(text) };
+  } catch (e) {
+    throw new Error("The AI answer could not be read. Try again.");
+  }
+}
+
 // ---------------------------------------------------------------- widget
 async function runWidget() {
   const h = loadHistory();
@@ -264,6 +309,7 @@ async function runApp() {
     lib: forWeb(lib),
     history,
     draft: readJSON(P.draft, null),
+    ai: { hasKey: Keychain.contains(KC_AI_KEY), autoAnalyze: CONFIG.ai.autoAnalyze },
     meta: readJSON(P.meta, null),
     consent: readJSON(P.consent, null),
     cfg: { unit: CONFIG.unit, rest: CONFIG.restSeconds, equipment: CONFIG.equipment, disclaimerVersion: DISCLAIMER_VERSION },
@@ -292,6 +338,29 @@ async function runApp() {
             }
           await js(`HG.onImages(${J(id)},${J(urls)})`);
         }
+        break;
+      case "ai": {
+        let out;
+        try {
+          out = await openai(p);
+        } catch (e) {
+          out = { error: String((e && e.message) || e) };
+        }
+        await js(`HG.onAI(${J(p.rid)},${J(out)})`);
+        break;
+      }
+      case "setkey": {
+        const key = String(p.key || "").trim();
+        if (!/^sk-/.test(key)) await js(`HG.onKey(${J({ ok: false, msg: "That doesn't look like an OpenAI key. It starts with sk-." })})`);
+        else {
+          Keychain.set(KC_AI_KEY, key);
+          await js(`HG.onKey(${J({ ok: true })})`);
+        }
+        break;
+      }
+      case "delkey":
+        if (Keychain.contains(KC_AI_KEY)) Keychain.remove(KC_AI_KEY);
+        await js(`HG.onKey(${J({ ok: true, removed: true })})`);
         break;
       case "accept":
         writeJSON(P.consent, { version: p.version, acceptedAt: new Date().toISOString() });
@@ -445,6 +514,9 @@ function webApp() {
     openSession: null, armed: null, sync: null,
     consent: !!(BOOT.consent && BOOT.consent.version === CFG.disclaimerVersion),
     showDisclaimer: false,
+    ai: { hasKey: !!(BOOT.ai && BOOT.ai.hasKey), auto: !BOOT.ai || BOOT.ai.autoAnalyze !== false },
+    aiBusy: null, plan: null,
+    builder: { groups: [], equipment: [], minutes: 45, intensity: "moderate", note: "" },
     acceptedAt: BOOT.consent ? BOOT.consent.acceptedAt : null,
     scroll: {}, outbox: [],
   };
@@ -579,8 +651,9 @@ function webApp() {
     clearTimeout(draftT);
     draftT = setTimeout(() => send("draft", { session: S.session }), 400);
   }
-  function startRest() {
-    S.rest = { end: Date.now() + CFG.rest * 1000, total: CFG.rest, beeped: false };
+  function startRest(seconds) {
+    const secs = seconds || CFG.rest;
+    S.rest = { end: Date.now() + secs * 1000, total: secs, beeped: false };
     tick();
   }
   function finish() {
@@ -591,6 +664,7 @@ function webApp() {
       .filter((en) => en.sets.length);
     if (!entries.length) return toast("Enter reps for at least one set first.", true);
     const done = { id: s.id, start: s.start, end: new Date().toISOString(), groups: s.groups, entries };
+    if (s.title) done.title = s.title;
     S.history.sessions = S.history.sessions.filter((x) => x.id !== done.id).concat(done);
     clearTimeout(draftT);
     send("save", { session: done });
@@ -599,7 +673,10 @@ function webApp() {
     S.tab = "history";
     S.openSession = done.id;
     render();
-    toast("Workout saved");
+    if (S.ai.hasKey && S.ai.auto) {
+      toast("Workout saved. Your AI coach is reviewing it…");
+      analyze(done.id);
+    } else toast("Workout saved");
   }
 
   // ------------------------------------------------ images
@@ -642,6 +719,319 @@ function webApp() {
       { rootMargin: "400px" }
     );
     els.forEach((el) => { if (!S.imgs[el.dataset.id]) io.observe(el); });
+  }
+
+  // ------------------------------------------------ AI coach
+  const INTENSITY = [
+    { key: "easy", label: "Easy" },
+    { key: "moderate", label: "Moderate" },
+    { key: "hard", label: "Hard" },
+  ];
+  const GROUP_KEYS = GROUPS.map((g) => g.key);
+  const libEquipment = () => [...new Set(S.lib.map((e) => e.eq))];
+  const isoDay = (d) => new Date(d).toISOString().slice(0, 10);
+  const groupOf = (id) => { const ex = S.byId[id]; return ex ? GROUP_OF[ex.pm[0]] : null; };
+  const setsText = (sets) => sets.map((x) => (x.w ? `${x.w}${UNIT}x${x.r}` : `${x.r} reps`)).join(", ");
+
+  let aiSeq = 0;
+  const aiWaiting = {};
+  function aiCall(name, instructions, input, schema) {
+    return new Promise((resolve) => {
+      const rid = `r${++aiSeq}`;
+      aiWaiting[rid] = resolve;
+      send("ai", { rid, name, instructions, input: JSON.stringify(input), schema });
+    });
+  }
+
+  function groupStats(days, excludeId) {
+    const since = Date.now() - days * 864e5;
+    const out = {};
+    GROUPS.forEach((g) => (out[g.key] = { group: g.key, sets: 0, sessions: 0, last: null }));
+    S.history.sessions.filter((s) => s.id !== excludeId).forEach((s) => {
+      const touched = new Set();
+      s.entries.forEach((en) => {
+        const g = groupOf(en.id);
+        if (!g) return;
+        touched.add(g.key);
+        if (new Date(s.start) >= since) out[g.key].sets += en.sets.length;
+      });
+      touched.forEach((k) => {
+        if (new Date(s.start) >= since) out[k].sessions++;
+        if (!out[k].last || s.start > out[k].last) out[k].last = s.start;
+      });
+    });
+    return Object.values(out).map((o) => ({
+      group: o.group, [`sets_last_${days}_days`]: o.sets, [`sessions_last_${days}_days`]: o.sessions,
+      days_since_trained: o.last ? Math.floor((Date.now() - new Date(o.last)) / 864e5) : null,
+    }));
+  }
+  function previousFor(id, before) {
+    const s = sessionsDesc().find((x) => x.start < before && x.entries.some((en) => en.id === id && en.sets.length));
+    return s ? { date: isoDay(s.start), sets: setsText(s.entries.find((en) => en.id === id).sets) } : null;
+  }
+
+  const PLAN_INSTRUCTIONS = [
+    "You are a careful, practical strength coach planning one home workout.",
+    "Use ONLY exercises from the candidates list and reference each by its exact id. Never invent ids.",
+    "Fit the time budget: about 5 minutes of warm-up, then roughly 2 to 3 minutes per working set including rest.",
+    "Put big compound movements first, isolation and core last. Usually 4 to 7 exercises.",
+    "If target is 'auto', choose the muscle groups that are most due based on recent_training (longest rest, fewest sets), and balance push, pull, legs and core.",
+    "Avoid loading a group hard if it was trained in the last 48 hours unless the user asked for it.",
+    "Respect the user's note. If it mentions pain or an injury, avoid loading that area and keep everything light.",
+    "Intensity: easy = 2 sets of 12 to 15 reps, about 3 reps in reserve; moderate = 3 sets of 8 to 12, 2 reps in reserve; hard = 3 to 4 sets of 6 to 10, 1 rep in reserve.",
+    "Weights: when a candidate shows the user's last performance, keep that weight or progress by at most about 5 percent if all reps were done. With no history set weight_kg to null and tell them to pick a weight that leaves 2 to 3 reps in reserve. Bodyweight exercises have weight_kg null.",
+    "rest_seconds between 45 and 180. Each note is one short practical form cue, at most 15 words.",
+    "Write title (max 5 words), summary (one sentence on the focus and why), warmup and cooldown (one or two sentences each) in plain English. Units are kilograms.",
+  ].join(" ");
+  const PLAN_SCHEMA = {
+    type: "object", additionalProperties: false,
+    required: ["title", "summary", "estimated_minutes", "warmup", "cooldown", "exercises"],
+    properties: {
+      title: { type: "string" }, summary: { type: "string" }, estimated_minutes: { type: "integer" },
+      warmup: { type: "string" }, cooldown: { type: "string" },
+      exercises: { type: "array", items: {
+        type: "object", additionalProperties: false,
+        required: ["id", "sets", "reps", "rest_seconds", "weight_kg", "note"],
+        properties: {
+          id: { type: "string" }, sets: { type: "integer" }, reps: { type: "integer" },
+          rest_seconds: { type: "integer" }, weight_kg: { type: ["number", "null"] }, note: { type: "string" },
+        },
+      } },
+    },
+  };
+
+  const REVIEW_INSTRUCTIONS = [
+    "You are a supportive but honest strength coach reviewing a home workout that was just logged.",
+    "Base everything on the data given. Never invent numbers or exercises.",
+    "headline: one encouraging sentence that names something specific from the workout.",
+    "went_well: 1 to 3 points, e.g. progress versus the previous time (compare weights and reps in previous).",
+    "watch_out: 0 to 3 points, e.g. a drop in reps, a very high or low volume, an imbalance such as lots of push and no pull. Empty if nothing stands out.",
+    "focus_next: 2 to 4 muscle groups to prioritise in the next sessions, chosen from undertrained groups in last_4_weeks and balance (push/pull, upper/lower, core), with intensity light, moderate or hard and a sensible number of working sets for one session.",
+    "Do not put a group that was trained hard today in focus_next with hard intensity.",
+    "recovery: one sentence on when today's muscles are ready again (typically 48 to 72 hours).",
+    "next_workout: the groups for the next session, when (e.g. 'Tomorrow' or 'In 2 days'), and a one-sentence idea.",
+    "Keep every string under 25 words. Plain English. This is not medical advice; if anything suggests pain, recommend rest and a professional.",
+  ].join(" ");
+  const REVIEW_SCHEMA = {
+    type: "object", additionalProperties: false,
+    required: ["headline", "went_well", "watch_out", "focus_next", "recovery", "next_workout"],
+    properties: {
+      headline: { type: "string" },
+      went_well: { type: "array", items: { type: "string" } },
+      watch_out: { type: "array", items: { type: "string" } },
+      focus_next: { type: "array", items: {
+        type: "object", additionalProperties: false, required: ["group", "intensity", "sets", "why"],
+        properties: {
+          group: { type: "string", enum: GROUP_KEYS },
+          intensity: { type: "string", enum: ["light", "moderate", "hard"] },
+          sets: { type: "integer" }, why: { type: "string" },
+        },
+      } },
+      recovery: { type: "string" },
+      next_workout: {
+        type: "object", additionalProperties: false, required: ["groups", "when", "idea"],
+        properties: { groups: { type: "array", items: { type: "string", enum: GROUP_KEYS } }, when: { type: "string" }, idea: { type: "string" } },
+      },
+    },
+  };
+
+  function openBuilder(groups) {
+    const eqs = libEquipment();
+    S.builder.groups = (groups || [...S.groups]).filter((k) => GROUP_KEYS.includes(k));
+    S.builder.equipment = S.builder.equipment.filter((q) => eqs.includes(q));
+    if (!S.builder.equipment.length) S.builder.equipment = eqs;
+    S.tab = "train";
+    S.detailId = null;
+    S.trainView = "ai";
+    render();
+  }
+
+  async function buildPlan() {
+    if (S.aiBusy) return;
+    const b = S.builder;
+    const muscles = (b.groups.length ? GROUPS.filter((g) => b.groups.includes(g.key)) : GROUPS).flatMap((g) => g.muscles);
+    const cands = S.lib.filter((e) => b.equipment.includes(e.eq) && e.cat !== "stretching" && e.pm.some((m) => muscles.includes(m)));
+    if (!cands.length) return toast("No exercises match that equipment and those muscles.", true);
+    const now = new Date().toISOString();
+    const input = {
+      today: isoDay(now),
+      request: {
+        target: b.groups.length ? b.groups : "auto",
+        equipment: b.equipment.map((q) => EQ_LABEL[q] || q),
+        minutes: b.minutes, intensity: b.intensity, note: b.note.trim() || null,
+      },
+      recent_training: groupStats(14),
+      last_sessions: sessionsDesc().slice(0, 5).map((s) => ({
+        date: isoDay(s.start), groups: s.groups, exercises: s.entries.map((en) => `${en.name}: ${setsText(en.sets)}`),
+      })),
+      candidates: cands.map((e) => {
+        const prev = previousFor(e.id, now);
+        return [e.id, e.n, EQ_LABEL[e.eq] || e.eq, e.lv, e.mech || "", e.pm.join("/"), prev ? `last ${prev.date}: ${prev.sets}` : ""].join(" | ");
+      }),
+    };
+    S.aiBusy = "plan";
+    render();
+    const res = await aiCall("workout_plan", PLAN_INSTRUCTIONS, input, PLAN_SCHEMA);
+    S.aiBusy = null;
+    if (!res) return render();
+    const clamp = (n, lo, hi, d) => (Number.isFinite(+n) ? Math.min(hi, Math.max(lo, Math.round(+n))) : d);
+    const seen = new Set();
+    const exercises = (res.exercises || []).filter((x) => S.byId[x.id] && !seen.has(x.id) && seen.add(x.id)).map((x) => ({
+      id: x.id, name: S.byId[x.id].n,
+      sets: clamp(x.sets, 1, 6, 3), reps: clamp(x.reps, 1, 50, 10), rest: clamp(x.rest_seconds, 30, 240, CFG.rest),
+      w: x.weight_kg > 0 ? Math.round(x.weight_kg * 2) / 2 : null, note: String(x.note || "").slice(0, 140),
+    }));
+    if (!exercises.length) {
+      toast("The AI coach didn't return usable exercises. Try again.", true);
+      return render();
+    }
+    S.plan = {
+      title: String(res.title || "Your workout").slice(0, 60), summary: String(res.summary || ""),
+      minutes: clamp(res.estimated_minutes, 5, 180, b.minutes), warmup: String(res.warmup || ""), cooldown: String(res.cooldown || ""),
+      exercises,
+    };
+    S.trainView = "plan";
+    render();
+  }
+
+  function startPlan() {
+    const p = S.plan;
+    const groups = [];
+    p.exercises.forEach((x) => { const g = groupOf(x.id); if (g && !groups.includes(g.key)) groups.push(g.key); });
+    S.session = {
+      id: uid(), start: new Date().toISOString(), groups, title: p.title,
+      entries: p.exercises.map((x) => ({
+        id: x.id, name: x.name, rest: x.rest, note: x.note,
+        sets: Array.from({ length: x.sets }, () => ({ w: x.w, r: x.reps, done: false })),
+      })),
+    };
+    saveDraft();
+    S.trainView = "home";
+    S.tab = "workout";
+    render();
+    toast("Workout ready. Go!");
+  }
+
+  async function analyze(id) {
+    const s = S.history.sessions.find((x) => x.id === id);
+    if (!s || S.aiBusy) return;
+    if (!S.ai.hasKey) return toast("Add your OpenAI API key under Build with AI first.", true);
+    const input = {
+      today: isoDay(new Date()),
+      workout: {
+        date: isoDay(s.start), title: s.title || null,
+        duration_minutes: s.end ? minutesBetween(s.start, s.end) : null,
+        exercises: s.entries.map((en) => {
+          const ex = S.byId[en.id];
+          const g = groupOf(en.id);
+          return {
+            name: en.name, group: g ? g.key : null, muscles: ex ? ex.pm : [], level: ex ? ex.lv : null,
+            sets: setsText(en.sets), previous: previousFor(en.id, s.start),
+          };
+        }),
+      },
+      last_4_weeks: groupStats(28, s.id),
+      equipment: libEquipment().map((q) => EQ_LABEL[q] || q),
+    };
+    S.aiBusy = `an:${id}`;
+    render();
+    const res = await aiCall("workout_review", REVIEW_INSTRUCTIONS, input, REVIEW_SCHEMA);
+    S.aiBusy = null;
+    if (res) {
+      const str = (v) => String(v || "").slice(0, 240);
+      const arr = (v) => (Array.isArray(v) ? v.map(str).filter(Boolean).slice(0, 4) : []);
+      s.ai = {
+        at: new Date().toISOString(), headline: str(res.headline), went_well: arr(res.went_well), watch_out: arr(res.watch_out),
+        focus_next: (res.focus_next || []).filter((f) => GROUP_KEYS.includes(f.group)).slice(0, 4).map((f) => ({
+          group: f.group, intensity: ["light", "moderate", "hard"].includes(f.intensity) ? f.intensity : "moderate",
+          sets: Math.max(1, Math.min(20, Math.round(+f.sets || 3))), why: str(f.why),
+        })),
+        recovery: str(res.recovery),
+        next: {
+          groups: ((res.next_workout || {}).groups || []).filter((k) => GROUP_KEYS.includes(k)),
+          when: str((res.next_workout || {}).when), idea: str((res.next_workout || {}).idea),
+        },
+      };
+      send("save", { session: s });
+      S.openSession = id;
+    }
+    render();
+  }
+
+  function keyBox() {
+    return `<div class="keybox"><p class="small"><b>Connect the AI coach.</b> Paste your OpenAI API key once. It stays in this iPhone's Keychain and is only sent to OpenAI. Create one at platform.openai.com.</p>
+      <div class="keyrow"><input type="password" id="aikey" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="sk-..."><button class="chip" data-a="savekey">Save</button></div></div>`;
+  }
+
+  function renderBuilder() {
+    const b = S.builder;
+    const busy = S.aiBusy === "plan";
+    const bchip = (v, on, label) => `<button class="chip" data-a="b-chip" data-v="${esc(v)}" aria-pressed="${on}">${esc(label)}</button>`;
+    return `<header class="bar"><button class="back" data-a="home">‹ Muscles</button></header>
+      <h1 class="title">Build my workout</h1>
+      <p class="lead">Tell the AI coach what you want. It picks exercises from your library, sets weights from your history and fits it all into your time.</p>
+      <h2>What to train</h2>
+      <div class="chips wrap">${bchip("auto", !b.groups.length, "Let AI decide")}${GROUPS.map((g) => bchip(`g:${g.key}`, b.groups.includes(g.key), g.label)).join("")}</div>
+      <h2>Equipment you have</h2>
+      <div class="chips wrap">${libEquipment().map((q) => bchip(`e:${q}`, b.equipment.includes(q), EQ_LABEL[q] || cap(q))).join("")}</div>
+      <h2>Time</h2>
+      <div class="seg seg4">${[20, 30, 45, 60].map((m) => `<button data-a="b-min" data-v="${m}" aria-pressed="${b.minutes === m}">${m} min</button>`).join("")}</div>
+      <h2>Intensity</h2>
+      <div class="seg">${INTENSITY.map((i) => `<button data-a="b-int" data-v="${i.key}" aria-pressed="${b.intensity === i.key}">${i.label}</button>`).join("")}</div>
+      <h2>Anything else?</h2>
+      <textarea class="search" data-in="b-note" rows="2" placeholder="Optional, e.g. lower back is a bit sore, or I want to get better at bench press">${esc(b.note)}</textarea>
+      ${S.ai.hasKey ? "" : keyBox()}
+      <button class="primary${busy ? " busy" : ""}" data-a="build" ${busy || !S.ai.hasKey || !b.equipment.length ? "disabled" : ""}>${busy ? "Building your workout…" : "Build workout"}</button>
+      <p class="muted small">AI suggestions can be wrong. Check every weight before you lift it.</p>`;
+  }
+
+  function renderPlan() {
+    const p = S.plan;
+    if (!p) return renderBuilder();
+    const busy = S.aiBusy === "plan";
+    const total = p.exercises.reduce((n, x) => n + x.sets, 0);
+    const replacing = S.session && S.session.entries.length;
+    const rows = p.exercises.map((x) => `<div class="ex plan-ex" data-a="open" data-v="${esc(x.id)}">
+        <div class="thumb" data-id="${esc(x.id)}">${imgTag(x.id, 0)}<span>${esc(initials(x.name))}</span></div>
+        <div><div class="ex-name">${esc(x.name)}</div>
+        <div class="ex-meta"><b>${x.sets} × ${x.reps}${x.w ? ` at ${fmtNum(x.w)} ${UNIT}` : ""}</b>, rest ${x.rest} s</div>
+        ${x.note ? `<div class="ex-meta">${esc(x.note)}</div>` : ""}</div></div>`).join("");
+    return `<header class="bar"><button class="back" data-a="b-edit">‹ Settings</button></header>
+      <p class="kicker">✨ Built by your AI coach</p>
+      <h1 class="title">${esc(p.title)}</h1>
+      <p class="lead">${esc(p.summary)}</p>
+      <p class="muted small">About ${p.minutes} min, ${plural(p.exercises.length, "exercise")}, ${plural(total, "set")}.</p>
+      ${p.warmup ? `<h2>Warm-up</h2><p>${esc(p.warmup)}</p>` : ""}
+      <h2>Exercises</h2><div class="list">${rows}</div>
+      ${p.cooldown ? `<h2>Cool-down</h2><p>${esc(p.cooldown)}</p>` : ""}
+      <button class="primary${S.armed === "plan-start" ? " armed" : ""}" data-a="plan-start">${S.armed === "plan-start" ? "Tap again to replace your current workout" : "Start this workout"}</button>
+      <button class="secondary${busy ? " busy" : ""}" data-a="build" ${busy ? "disabled" : ""}>${busy ? "Building another…" : "Build another"}</button>
+      <p class="muted small">${replacing ? "Starting replaces the workout in progress. " : ""}Weights without history are left for you to choose. AI suggestions can be wrong.</p>`;
+  }
+
+  function renderAnalysis(s) {
+    const busy = S.aiBusy === `an:${s.id}`;
+    if (!s.ai)
+      return `<button class="ai-btn${busy ? " busy" : ""}" data-a="analyze" data-v="${esc(s.id)}" ${busy || S.aiBusy ? "disabled" : ""}>${busy ? "Your AI coach is reviewing this workout…" : "✨ Analyze with AI coach"}</button>`;
+    const a = s.ai;
+    const list = (title, items) => (items.length ? `<h3>${title}</h3><ul>${items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "");
+    const focus = a.focus_next.map((f) => {
+      const g = GROUPS.find((x) => x.key === f.group);
+      return `<div class="focus-row"><div class="focus-top"><i class="dot pl-${g.plate}"></i><b>${g.label}</b>
+        <span class="int int-${f.intensity}">${cap(f.intensity)}, ${plural(f.sets, "set")}</span></div>
+        <p class="muted small">${esc(f.why)}</p></div>`;
+    }).join("");
+    const nextLabels = a.next.groups.map((k) => GROUPS.find((g) => g.key === k).label).join(" + ");
+    return `<div class="coach">
+      <p class="kicker">✨ AI coach</p>
+      <p class="coach-h">${esc(a.headline)}</p>
+      ${list("Went well", a.went_well)}${list("Watch", a.watch_out)}
+      ${focus ? `<h3>Focus next</h3>${focus}` : ""}
+      ${a.recovery ? `<h3>Recovery</h3><p>${esc(a.recovery)}</p>` : ""}
+      ${a.next.idea ? `<h3>Next workout${a.next.when ? `: ${esc(a.next.when)}` : ""}</h3><p>${nextLabels ? `<b>${esc(nextLabels)}.</b> ` : ""}${esc(a.next.idea)}</p>` : ""}
+      ${a.next.groups.length ? `<button class="primary" data-a="build-next" data-v="${esc(s.id)}">✨ Build this next workout</button>` : ""}
+      <button class="link small" data-a="reanalyze" data-v="${esc(s.id)}" ${S.aiBusy ? "disabled" : ""}>${busy ? "Analyzing…" : "Analyze again"}</button>
+    </div>`;
   }
 
   // ------------------------------------------------ views
@@ -687,6 +1077,7 @@ function webApp() {
         <p>Check with a doctor before you start, especially if you have an injury or a health condition, are pregnant, or haven't trained for a while.</p>
         <p>Learn each movement with light weights, warm up, use safety stops or a spotter for heavy barbell work, and stop straight away if you feel pain, dizziness or shortness of breath.</p>
         <p>The exercise data comes from a third-party public-domain source and may contain mistakes.</p>
+        <p>The optional AI coach is an automated language model. Its workouts, weights and analysis are generated automatically, can be wrong, and are no substitute for a qualified coach or doctor.</p>
         <p><b>You use this app and do these exercises entirely at your own risk.</b> To the fullest extent permitted by law, the author is not responsible or liable for any injury, health problem, loss or damage arising from using the app or doing the exercises.</p>
       </div>
       ${first
@@ -722,10 +1113,11 @@ function webApp() {
       ${resume}
       <div class="rack">${GROUPS.map(plateHTML).join("")}</div>
       <button class="primary" data-a="browse" ${sel ? "" : "disabled"}>${sel ? `Show ${countFor(selectedMuscles())} exercises` : "Pick a muscle group"}</button>
+      <button class="secondary ai" data-a="builder">✨ Build a workout with AI</button>
       <footer class="lib">
         <p class="muted small">${S.lib.length} exercises for ${esc(eqNames())} stored on this phone${S.meta ? `, updated ${esc(day(S.meta.syncedAt))}` : ""}. Photos and instructions from free-exercise-db (public domain).</p>
         ${missingPhotos() && !S.sync ? `<p class="small"><b>${plural(missingPhotos(), "exercise")} ${missingPhotos() === 1 ? "has" : "have"} no photos yet.</b> Tap Update library to download them.</p>` : ""}
-        <div class="row">${S.sync ? "" : `<button class="link" data-a="sync">Update library</button>`}<button class="link danger" data-a="disclaimer">Disclaimer</button></div>
+        <div class="row">${S.sync ? "" : `<button class="link" data-a="sync">Update library</button>`}${S.ai.hasKey ? `<button class="link danger${S.armed === "delkey" ? " armed" : ""}" data-a="delkey">${S.armed === "delkey" ? "Tap to remove" : "AI key"}</button>` : ""}<button class="link danger" data-a="disclaimer">Disclaimer</button></div>
         ${S.sync ? syncProgress() : ""}
       </footer>`;
   }
@@ -807,13 +1199,14 @@ function webApp() {
       return `<section class="entry">
         <div class="entry-head"><button class="entry-name" data-a="open" data-v="${esc(en.id)}">${esc(en.name)}</button>
         <button class="link small${S.armed === "rm" + ei ? " armed" : ""}" data-a="rm-entry" data-v="${ei}">${S.armed === "rm" + ei ? "Tap to remove" : "Remove"}</button></div>
+        ${en.note ? `<p class="small coach-note">✨ ${esc(en.note)}${en.rest ? ` Rest ${en.rest} s.` : ""}</p>` : ""}
         ${last ? `<p class="muted small">Last time, ${esc(day(last.date))}: ${esc(fmtSets(last.sets))}</p>` : `<p class="muted small">First time logging this one.</p>`}
         <div class="set-row head"><span>Set</span><span>${UNIT}</span><span>Reps</span><span></span><span></span></div>
         ${rows}
         <button class="link" data-a="add-set" data-v="${ei}">Add set</button></section>`;
     }).join("");
-    return `<header class="bar"><h1 class="title">Workout</h1><span class="muted" id="elapsed">${elapsed(s.start)}</span></header>
-      <p class="muted small" id="totals">${plural(t.n, "set")} done${t.v ? `, ${fmtNum(t.v)} ${UNIT} lifted` : ""}. Tap ✓ after each set to start the ${CFG.rest} s rest timer.</p>
+    return `<header class="bar"><h1 class="title">${esc(s.title || "Workout")}</h1><span class="muted" id="elapsed">${elapsed(s.start)}</span></header>
+      <p class="muted small" id="totals">${plural(t.n, "set")} done${t.v ? `, ${fmtNum(t.v)} ${UNIT} lifted` : ""}. Tap ✓ after each set to start the rest timer.</p>
       ${entries}
       <button class="secondary" data-a="tab" data-v="train">Add exercise</button>
       <button class="primary${S.armed === "finish" ? " armed" : ""}" data-a="finish">${S.armed === "finish" ? "Tap again to save" : "Finish workout"}</button>
@@ -841,11 +1234,12 @@ function webApp() {
       }).join("");
       return `<section class="sess${open ? " open" : ""}">
         <button class="sess-head" data-a="sess" data-v="${esc(s.id)}" aria-expanded="${open}">
-          <span><b>${esc(day(s.start))}</b><span class="muted small">${s.end ? `${minutesBetween(s.start, s.end)} min, ` : ""}${plural(s.entries.length, "exercise")}, ${plural(v.n, "set")}${v.v ? `, ${fmtNum(v.v)} ${UNIT}` : ""}</span></span>
+          <span><b>${esc(day(s.start))}${s.ai ? ' <i class="spark-mark" title="Analyzed by AI coach">✨</i>' : ""}</b><span class="muted small">${s.title ? `${esc(s.title)}, ` : ""}${s.end ? `${minutesBetween(s.start, s.end)} min, ` : ""}${plural(s.entries.length, "exercise")}, ${plural(v.n, "set")}${v.v ? `, ${fmtNum(v.v)} ${UNIT}` : ""}</span></span>
           <span class="dots">${dots}</span></button>
         ${open ? `<div class="sess-body">${s.entries.map((en) => `<div class="sess-ex">
             <button class="entry-name" data-a="open" data-v="${esc(en.id)}">${esc(en.name)}</button>
             <span class="muted small">${esc(fmtSets(en.sets))}</span></div>`).join("")}
+          ${renderAnalysis(s)}
           <div class="row"><button class="link" data-a="repeat" data-v="${esc(s.id)}">Repeat this workout</button>
           <button class="link danger${S.armed === "del" + s.id ? " armed" : ""}" data-a="del-sess" data-v="${esc(s.id)}">${S.armed === "del" + s.id ? "Tap to delete" : "Delete"}</button></div></div>` : ""}
       </section>`;
@@ -869,14 +1263,14 @@ function webApp() {
     if (currentKey && !same) S.scroll[currentKey] = y;
     $app.innerHTML = !S.consent || S.showDisclaimer ? renderDisclaimer()
       : S.detailId ? renderDetail()
-      : S.tab === "train" ? (S.trainView === "list" && S.lib.length ? renderList() : renderHome())
+      : S.tab === "train" ? (!S.lib.length ? renderHome() : S.trainView === "list" ? renderList() : S.trainView === "ai" ? renderBuilder() : S.trainView === "plan" ? renderPlan() : renderHome())
       : S.tab === "workout" ? renderWorkout() : renderHistory();
     if (S.consent) renderTabs();
     else $tabs.innerHTML = "";
     window.scrollTo(0, same ? y : key.startsWith("detail:") ? 0 : S.scroll[key] || 0);
     currentKey = key;
     if (S.detailId) want(S.detailId);
-    else if (S.tab === "train" && S.trainView === "list") observeThumbs();
+    else if (S.tab === "train" && (S.trainView === "list" || S.trainView === "plan")) observeThumbs();
   }
 
   function tick() {
@@ -916,6 +1310,34 @@ function webApp() {
   const ij = (v) => v.split(":").map(Number);
 
   const A = {
+    builder: () => openBuilder(),
+    "b-chip": (v) => {
+      const b = S.builder;
+      if (v === "auto") b.groups = [];
+      else if (v.startsWith("g:")) { const k = v.slice(2); b.groups = b.groups.includes(k) ? b.groups.filter((x) => x !== k) : b.groups.concat(k); }
+      else if (v.startsWith("e:")) { const q = v.slice(2); b.equipment = b.equipment.includes(q) ? b.equipment.filter((x) => x !== q) : b.equipment.concat(q); }
+      render();
+    },
+    "b-min": (v) => { S.builder.minutes = +v; render(); },
+    "b-int": (v) => { S.builder.intensity = v; render(); },
+    "b-edit": () => { S.trainView = "ai"; render(); },
+    build: () => buildPlan(),
+    "plan-start": () => (S.session && S.session.entries.length ? arm("plan-start", startPlan) : startPlan()),
+    analyze: (v) => analyze(v),
+    reanalyze: (v) => { const s = S.history.sessions.find((x) => x.id === v); if (s && !S.aiBusy) { delete s.ai; analyze(v); } },
+    "build-next": (v) => {
+      const s = S.history.sessions.find((x) => x.id === v);
+      const f = s && s.ai && s.ai.focus_next.find((x) => s.ai.next.groups.includes(x.group));
+      if (f) S.builder.intensity = f.intensity === "light" ? "easy" : f.intensity;
+      openBuilder(s && s.ai ? s.ai.next.groups : []);
+    },
+    savekey: () => {
+      const el = $("#aikey");
+      const key = el ? el.value.trim() : "";
+      if (!key) return toast("Paste your OpenAI API key first.", true);
+      send("setkey", { key });
+    },
+    delkey: () => arm("delkey", () => { send("delkey", {}); }),
     accept: () => {
       S.consent = true;
       S.acceptedAt = new Date().toISOString();
@@ -962,10 +1384,11 @@ function webApp() {
     },
     done: (v) => {
       const [ei, si] = ij(v);
-      const set = S.session.entries[ei].sets[si];
+      const en = S.session.entries[ei];
+      const set = en.sets[si];
       if (!set.done && !(set.r > 0)) return toast("Enter reps first.", true);
       set.done = !set.done;
-      if (set.done) startRest();
+      if (set.done) startRest(en.rest);
       saveDraft();
       render();
     },
@@ -1031,6 +1454,7 @@ function webApp() {
     const t = ev.target;
     const k = t.dataset && t.dataset.in;
     if (!k) return;
+    if (k === "b-note") { S.builder.note = t.value.slice(0, 300); return; }
     if (k === "q") {
       S.q = t.value;
       const r = $("#results");
@@ -1069,6 +1493,22 @@ function webApp() {
       if (S.tab === "history" && !S.detailId) render();
     },
     onError(msg) { S.sync = null; render(); toast(msg, true); },
+    onAI(rid, out) {
+      const done = aiWaiting[rid];
+      delete aiWaiting[rid];
+      out = out || {};
+      if (out.needKey) {
+        S.ai.hasKey = false;
+        toast("Add your OpenAI API key to use the AI coach.", true);
+      } else if (out.error) toast(`AI coach: ${out.error}`, true);
+      if (done) done(out.data || null);
+    },
+    onKey(r) {
+      if (r.ok && r.removed) { S.ai.hasKey = false; toast("AI key removed"); }
+      else if (r.ok) { S.ai.hasKey = true; toast("Key saved. Your AI coach is ready."); }
+      else toast(r.msg || "Could not save the key.", true);
+      render();
+    },
     toast(msg) { toast(msg); },
   };
 
@@ -1173,6 +1613,35 @@ p{margin:0 0 10px}
 .spark polyline{fill:none;stroke:var(--accent);stroke-width:2.5;vector-effect:non-scaling-stroke}
 .spark circle{fill:var(--accent)}
 .cta{margin-top:18px}
+.chips.wrap{flex-wrap:wrap;overflow:visible;margin:0 0 6px;padding:2px 0}
+.seg4{grid-template-columns:repeat(4,1fr)}
+textarea.search{resize:none;line-height:1.4}
+.secondary.ai{border-color:var(--accent);color:var(--accent);font-weight:700}
+.busy{animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){.busy{animation:none}}
+.kicker{font-size:13px;font-weight:700;color:var(--accent);margin:8px 0 0}
+.keybox{background:var(--surface);border-radius:14px;padding:14px;margin:18px 0 4px;border:1.5px dashed var(--accent)}
+.keyrow{display:flex;gap:8px;align-items:center}
+.keyrow input{flex:1;min-width:0;font:16px var(--body);padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);-webkit-appearance:none}
+.plan-ex{grid-template-columns:64px 1fr}
+.plan-ex .ex-meta b{color:var(--ink);font-weight:700}
+.coach-note{margin:2px 0 4px;color:var(--ink)}
+.ai-btn{display:block;width:100%;margin:12px 0 4px;padding:12px;border-radius:12px;border:1.5px solid var(--accent);color:var(--accent);font-weight:700;text-align:center}
+.coach{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:var(--bg)}
+.coach .kicker{margin:0 0 2px}
+.coach-h{font:800 20px/1.2 var(--display);margin:0 0 6px}
+.coach h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 4px}
+.coach ul{margin:0;padding-left:18px}.coach li{margin:0 0 4px}
+.focus-row{padding:6px 0;border-top:1px solid var(--line)}
+.focus-top{display:flex;align-items:center;gap:8px}
+.focus-row p{margin:2px 0 0 18px}
+.int{margin-left:auto;font-size:13px;font-weight:700;padding:2px 8px;border-radius:6px}
+.int-light{background:rgba(46,139,62,.16);color:var(--done)}
+.int-moderate{background:rgba(242,183,5,.22);color:var(--ink)}
+.int-hard{background:rgba(200,16,46,.15);color:var(--accent)}
+.spark-mark{font-style:normal;font-size:14px}
+.row{flex-wrap:wrap;gap:0 18px}
 .note{font-size:14px;color:var(--muted);border-left:3px solid var(--accent);padding:2px 0 2px 10px;margin:4px 0 0}
 .disclaimer{background:var(--surface);border-radius:14px;padding:16px 16px 6px;margin:8px 0 6px}
 .disclaimer p{margin:0 0 12px}
