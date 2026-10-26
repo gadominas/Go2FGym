@@ -39,13 +39,23 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
 | ✍️ **Fast logging** | Weight and reps are prefilled from last time. Change what's different, tap ✓, done. |
 | ⏱ **Rest timer** | Ticking a set starts a 90 s countdown with a beep. Add 30 s or skip. |
 | 📈 **Progress** | Each exercise shows your last performance and a trend of your estimated one-rep max. |
-| 🗓 **History** | Weekly totals, every past workout set by set, one-tap **Repeat this workout**, and CSV export. |
+| 🗓 **Calendar** | Every workout on a month calendar, with coloured dots for the muscle groups trained each day and monthly totals per group. Tap a day to see it set by set. |
+| 📈 **Progress** | Sets per week for 12 weeks stacked by muscle group, muscle balance for the last 4 weeks with the most-due group, your streak, and a trend for each of your main lifts. |
+| 🏃 **Strava post** | A ready-made title and description for every workout in **Serious**, **Funny** or **Neutral** tone. Copy title, description or both, then paste into Strava. |
+| 🗂 **History** | Every past workout set by set, one-tap **Repeat this workout**, and CSV export. |
 | ✈️ **Offline** | One download of about 36 MB, then no network needed. |
 | 💾 **Nothing lost** | An unfinished workout comes back when you reopen the app. History is mirrored to iCloud Drive. |
 | ✨ **AI workout builder** | Say what to train (or let the AI decide), which equipment you have, how long and how hard. You get a plan from your own library with sets, reps, rest and weights based on your history. Review it, then start with one tap. |
 | ✨ **AI coach after each workout** | What went well, what to watch, which muscle groups to focus on next and how hard, when you've recovered, and a one-tap **Build this next workout**. |
 | 📲 **Widget** | Your last workout and this week's count on the Home Screen. |
 | 🌗 **Light and dark** | Follows your iPhone's appearance. |
+
+<p align="center">
+  <img src="docs/screenshots/06-history.png" width="180" alt="Calendar with muscle-group dots per day">
+  <img src="docs/screenshots/11-progress.png" width="180" alt="Progress: sets per week by muscle group and muscle balance">
+  <img src="docs/screenshots/13-lifts.png" width="180" alt="Lift trends">
+  <img src="docs/screenshots/12-strava-post.png" width="180" alt="Strava title and description in Funny mode">
+</p>
 
 <p align="center">
   <img src="docs/screenshots/08-ai-build-workout.png" width="180" alt="AI workout builder: muscles, equipment, time and intensity">
@@ -56,7 +66,6 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
 <p align="center">
   <img src="docs/screenshots/02-exercise-list.png" width="180" alt="Exercise list filtered by muscle and equipment">
   <img src="docs/screenshots/04-steps-and-progress.png" width="180" alt="Steps, last time and progress chart">
-  <img src="docs/screenshots/06-history.png" width="180" alt="Workout history">
   <img src="docs/screenshots/07-dark-mode.png" width="180" alt="Dark mode">
 </p>
 
@@ -67,7 +76,9 @@ Uses the OpenAI API with **your own API key**. Everything else in the app works 
 1. Create a key at [platform.openai.com](https://platform.openai.com/api-keys).
 2. In Go2FGym tap **✨ Build a workout with AI**, paste the key and tap **Save**. It's stored in the iPhone's Keychain and only sent to OpenAI.
 3. Pick what to train, your equipment, 20 to 60 minutes and Easy, Moderate or Hard, add a note if you like ("lower back is sore"), and tap **Build workout**.
-4. Check the plan, then **Start this workout**. After **Finish workout** the AI coach reviews it automatically; the analysis is saved with the workout in **History**.
+4. Check the plan, then **Start this workout**. After **Finish workout** the AI coach reviews it and writes a Strava title and description. Both are saved with the workout in **History**.
+
+Without a key, the Strava post's **Neutral** tone still works as a basic summary built on the phone.
 
 The AI only chooses exercises from your library, keeps weights at or close to what you lifted last time, and avoids loading anything you mention in the note. Check every weight anyway: it can be wrong.
 
@@ -87,6 +98,9 @@ The AI only chooses exercises from your library, keeps weights at or close to wh
 | Do a past workout again | **History**, open the workout, **Repeat this workout** |
 | Let AI build a workout | **Train › ✨ Build a workout with AI** |
 | Get AI feedback on a past workout | **History**, open it, **✨ Analyze with AI coach** |
+| See your month | **History › Calendar**, tap a day; **‹ ›** change month |
+| See your trends | **Progress** tab; tap a lift for its details |
+| Post to Strava | **History**, open the workout, pick **Serious**, **Funny** or **Neutral** under *Strava post*, then **Copy both** |
 | Export | **History › Export CSV** |
 | Get new exercises or missing photos | **Train › Update library** |
 
@@ -104,6 +118,8 @@ Settings live in the `CONFIG` block at the top of `Go2FGym.js`:
 | `ai.model` | `"gpt-5.4-mini"` | OpenAI model for the AI coach |
 | `ai.reasoning` | `"low"` | `"low"` is quick; `"medium"` plans a bit more carefully but slower |
 | `ai.autoAnalyze` | `true` | Analyze each workout right after you finish it |
+| `ai.autoStrava` | `true` | Also write a Strava title and description after each workout |
+| `ai.stravaMode` | `"funny"` | Default Strava tone: `"serious"`, `"funny"` or `"neutral"` |
 
 After changing `equipment`, tap **Update library** to download the extra photos.
 

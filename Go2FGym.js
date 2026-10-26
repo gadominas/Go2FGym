@@ -35,6 +35,8 @@ const CONFIG = {
     model: "gpt-5.4-mini",
     reasoning: "low", // "low" is quick; "medium" plans a little more carefully but slower
     autoAnalyze: true, // analyze each workout right after you finish it (needs a key)
+    autoStrava: true, // also write a Strava title and description after each workout
+    stravaMode: "funny", // default tone for Strava posts: "serious", "funny" or "neutral"
   },
 };
 
@@ -309,7 +311,7 @@ async function runApp() {
     lib: forWeb(lib),
     history,
     draft: readJSON(P.draft, null),
-    ai: { hasKey: Keychain.contains(KC_AI_KEY), autoAnalyze: CONFIG.ai.autoAnalyze },
+    ai: { hasKey: Keychain.contains(KC_AI_KEY), autoAnalyze: CONFIG.ai.autoAnalyze, autoStrava: CONFIG.ai.autoStrava, stravaMode: CONFIG.ai.stravaMode },
     meta: readJSON(P.meta, null),
     consent: readJSON(P.consent, null),
     cfg: { unit: CONFIG.unit, rest: CONFIG.restSeconds, equipment: CONFIG.equipment, disclaimerVersion: DISCLAIMER_VERSION },
@@ -358,6 +360,10 @@ async function runApp() {
         }
         break;
       }
+      case "copy":
+        Pasteboard.copyString(String(p.text || ""));
+        await js(`HG.toast(${J(p.label ? `${p.label} copied` : "Copied")})`);
+        break;
       case "delkey":
         if (Keychain.contains(KC_AI_KEY)) Keychain.remove(KC_AI_KEY);
         await js(`HG.onKey(${J({ ok: true, removed: true })})`);
@@ -491,6 +497,7 @@ function webApp() {
     train: '<svg viewBox="0 0 24 24"><path d="M3 10v4M6.5 7v10M17.5 7v10M21 10v4M6.5 12h11"/></svg>',
     workout: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 1.8M9.5 3h5"/></svg>',
     history: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>',
+    progress: '<svg viewBox="0 0 24 24"><path d="M3 20h18M6 16v-4M11 16V8M16 16v-6M20 16V5"/></svg>',
   };
   const CLUB_URL = "https://www.instagram.com/7amclub__/";
   const LOGO = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="var(--p-red)"/>' +
@@ -500,6 +507,7 @@ function webApp() {
     { key: "train", label: "Train" },
     { key: "workout", label: "Workout" },
     { key: "history", label: "History" },
+    { key: "progress", label: "Progress" },
   ];
 
   const S = {
@@ -512,9 +520,14 @@ function webApp() {
     imgs: {}, pending: new Set(), queue: new Set(),
     rest: { end: 0, total: 0, beeped: true },
     openSession: null, armed: null, sync: null,
+    histView: "calendar", cal: null, stravaMode: {},
     consent: !!(BOOT.consent && BOOT.consent.version === CFG.disclaimerVersion),
     showDisclaimer: false,
-    ai: { hasKey: !!(BOOT.ai && BOOT.ai.hasKey), auto: !BOOT.ai || BOOT.ai.autoAnalyze !== false },
+    ai: {
+      hasKey: !!(BOOT.ai && BOOT.ai.hasKey), auto: !BOOT.ai || BOOT.ai.autoAnalyze !== false,
+      autoStrava: !BOOT.ai || BOOT.ai.autoStrava !== false,
+      stravaMode: (BOOT.ai && ["serious", "funny", "neutral"].includes(BOOT.ai.stravaMode)) ? BOOT.ai.stravaMode : "funny",
+    },
     aiBusy: null, plan: null,
     builder: { groups: [], equipment: [], minutes: 45, intensity: "moderate", note: "" },
     acceptedAt: BOOT.consent ? BOOT.consent.acceptedAt : null,
@@ -672,10 +685,14 @@ function webApp() {
     S.rest.end = 0;
     S.tab = "history";
     S.openSession = done.id;
+    focusDay(done.start);
     render();
-    if (S.ai.hasKey && S.ai.auto) {
-      toast("Workout saved. Your AI coach is reviewing it…");
-      analyze(done.id);
+    if (S.ai.hasKey && (S.ai.auto || S.ai.autoStrava)) {
+      toast(S.ai.auto ? "Workout saved. Your AI coach is reviewing it…" : "Workout saved");
+      (async () => {
+        if (S.ai.auto) await analyze(done.id);
+        if (S.ai.autoStrava && S.ai.hasKey) await stravaPost(done.id, S.ai.stravaMode);
+      })();
     } else toast("Workout saved");
   }
 
@@ -937,7 +954,9 @@ function webApp() {
     render();
     const res = await aiCall("workout_review", REVIEW_INSTRUCTIONS, input, REVIEW_SCHEMA);
     S.aiBusy = null;
-    if (res) {
+    const s2 = S.history.sessions.find((x) => x.id === id);
+    if (res && s2) {
+      const s = s2;
       const str = (v) => String(v || "").slice(0, 240);
       const arr = (v) => (Array.isArray(v) ? v.map(str).filter(Boolean).slice(0, 4) : []);
       s.ai = {
@@ -1213,6 +1232,83 @@ function webApp() {
       <button class="link danger${S.armed === "discard" ? " armed" : ""}" data-a="discard">${S.armed === "discard" ? "Tap again to discard" : "Discard workout"}</button>`;
   }
 
+  // ------------------------------------------------ calendar, history, progress
+  const ymd = (d) => { const x = new Date(d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`; };
+  function sessionGroups(s) {
+    const keys = new Set();
+    s.entries.forEach((en) => { const g = groupOf(en.id); if (g) keys.add(g.key); });
+    if (!keys.size) (s.groups || []).forEach((k) => keys.add(k));
+    return GROUPS.filter((g) => keys.has(g.key));
+  }
+  const dotsFor = (groups) => groups.map((g) => `<i class="dot pl-${g.plate}" title="${g.label}"></i>`).join("");
+  function focusDay(iso) {
+    const d = new Date(iso);
+    S.cal = { y: d.getFullYear(), m: d.getMonth(), sel: ymd(d) };
+    S.histView = "calendar";
+  }
+  function ensureCal() {
+    if (S.cal) return;
+    const latest = sessionsDesc()[0];
+    const now = new Date();
+    const inMonth = latest && new Date(latest.start).getMonth() === now.getMonth() && new Date(latest.start).getFullYear() === now.getFullYear();
+    S.cal = { y: now.getFullYear(), m: now.getMonth(), sel: inMonth ? ymd(latest.start) : null };
+  }
+
+  function sessCard(s, forceOpen) {
+    const v = volume(s.entries);
+    const open = forceOpen || S.openSession === s.id;
+    return `<section class="sess${open ? " open" : ""}">
+      <button class="sess-head" data-a="sess" data-v="${esc(s.id)}" aria-expanded="${open}">
+        <span><b>${esc(day(s.start))}${s.ai ? ' <i class="spark-mark" title="Analyzed by AI coach">✨</i>' : ""}</b><span class="muted small">${s.title ? `${esc(s.title)}, ` : ""}${s.end ? `${minutesBetween(s.start, s.end)} min, ` : ""}${plural(s.entries.length, "exercise")}, ${plural(v.n, "set")}${v.v ? `, ${fmtNum(v.v)} ${UNIT}` : ""}</span></span>
+        <span class="dots">${dotsFor(sessionGroups(s))}</span></button>
+      ${open ? `<div class="sess-body">${s.entries.map((en) => `<div class="sess-ex">
+          <button class="entry-name" data-a="open" data-v="${esc(en.id)}">${esc(en.name)}</button>
+          <span class="muted small">${esc(fmtSets(en.sets))}</span></div>`).join("")}
+        ${renderAnalysis(s)}
+        ${renderStrava(s)}
+        <div class="row"><button class="link" data-a="repeat" data-v="${esc(s.id)}">Repeat this workout</button>
+        <button class="link danger${S.armed === "del" + s.id ? " armed" : ""}" data-a="del-sess" data-v="${esc(s.id)}">${S.armed === "del" + s.id ? "Tap to delete" : "Delete"}</button></div></div>` : ""}
+    </section>`;
+  }
+
+  function renderCalendar(ss) {
+    ensureCal();
+    const { y, m, sel } = S.cal;
+    const first = new Date(y, m, 1);
+    const pad = (first.getDay() + 6) % 7;
+    const days = new Date(y, m + 1, 0).getDate();
+    const byDay = {};
+    ss.forEach((s) => { const k = ymd(s.start); (byDay[k] = byDay[k] || []).push(s); });
+    const todayK = ymd(new Date());
+    const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 1 + i).toLocaleDateString(undefined, { weekday: "narrow" }));
+    let cells = "";
+    for (let i = 0; i < pad; i++) cells += `<div class="cd empty"></div>`;
+    for (let d = 1; d <= days; d++) {
+      const k = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const list = byDay[k];
+      const groups = list ? GROUPS.filter((g) => list.some((s) => sessionGroups(s).includes(g))) : [];
+      cells += `<button class="cd${list ? " has" : ""}${k === todayK ? " today" : ""}${k === sel ? " sel" : ""}" data-a="cal-day" data-v="${k}" ${list ? "" : "disabled"}
+        aria-label="${esc(new Date(y, m, d).toLocaleDateString(undefined, { day: "numeric", month: "long" }))}${list ? `: ${groups.map((g) => g.label).join(", ")}` : ""}">
+        <span class="cd-n">${d}</span><span class="cd-dots">${dotsFor(groups.slice(0, 4))}${groups.length > 4 ? `<span class="cd-more">+${groups.length - 4}</span>` : ""}</span></button>`;
+    }
+    const monthSessions = ss.filter((s) => { const d = new Date(s.start); return d.getFullYear() === y && d.getMonth() === m; });
+    const mv = volume(monthSessions.flatMap((s) => s.entries));
+    const trainedDays = new Set(monthSessions.map((s) => ymd(s.start))).size;
+    const groupDays = GROUPS.map((g) => ({ g, n: new Set(monthSessions.filter((s) => sessionGroups(s).includes(g)).map((s) => ymd(s.start))).size }));
+    const monthName = first.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    const selList = sel && byDay[sel] ? byDay[sel] : null;
+    const isCurrent = y === new Date().getFullYear() && m === new Date().getMonth();
+    return `<div class="cal">
+        <div class="cal-head"><button class="cal-nav" data-a="cal-prev" aria-label="Previous month">‹</button><b>${esc(monthName)}</b>
+        <button class="cal-nav" data-a="cal-next" aria-label="Next month" ${isCurrent ? "disabled" : ""}>›</button></div>
+        <div class="cal-grid">${weekdays.map((w) => `<span class="cal-wd">${esc(w)}</span>`).join("")}${cells}</div>
+      </div>
+      <p class="small month-sum">${monthSessions.length ? `${esc(monthName.split(" ")[0])}: ${plural(monthSessions.length, "workout")} on ${plural(trainedDays, "day")}, ${plural(mv.n, "set")}${mv.v ? `, ${fmtNum(mv.v)} ${UNIT} lifted` : ""}.` : "No workouts this month yet."}</p>
+      ${monthSessions.length ? `<div class="legend">${groupDays.map(({ g, n }) => `<span class="lg${n ? "" : " zero"}"><i class="dot pl-${g.plate}"></i>${g.label} <b>${n}</b></span>`).join("")}</div>
+      <p class="muted small">Dots show the muscle groups trained that day; numbers count training days this month.</p>` : ""}
+      ${selList ? selList.map((s2) => sessCard(s2, true)).join("") : monthSessions.length ? `<p class="empty-line">Tap a day with dots to see the workout.</p>` : ""}`;
+  }
+
   function renderHistory() {
     const ss = sessionsDesc();
     const head = `<header class="bar"><h1 class="title">History</h1>${ss.length ? `<button class="link" data-a="export">Export CSV</button>` : ""}</header>`;
@@ -1225,26 +1321,195 @@ function webApp() {
     const summary = week.length
       ? `This week: ${plural(week.length, "workout")}, ${plural(wv.n, "set")}${wv.v ? `, ${fmtNum(wv.v)} ${UNIT} lifted` : ""}.`
       : "No workouts yet this week.";
-    const items = ss.map((s) => {
-      const v = volume(s.entries);
-      const open = S.openSession === s.id;
-      const dots = (s.groups || []).map((k) => {
-        const g = GROUPS.find((x) => x.key === k);
-        return g ? `<i class="dot pl-${g.plate}" title="${g.label}"></i>` : "";
+    const seg = `<div class="seg seg2"><button data-a="hist-view" data-v="calendar" aria-pressed="${S.histView === "calendar"}">Calendar</button>
+      <button data-a="hist-view" data-v="list" aria-pressed="${S.histView === "list"}">List</button></div>`;
+    return head + `<p class="lead">${esc(summary)}</p>` + seg + (S.histView === "calendar" ? renderCalendar(ss) : ss.map((s) => sessCard(s)).join(""));
+  }
+
+  function weekStart(d) {
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+    return x;
+  }
+  function renderProgress() {
+    const asc = [...S.history.sessions].sort((a, b) => a.start.localeCompare(b.start));
+    const head = `<header class="bar"><h1 class="title">Progress</h1></header>`;
+    if (!asc.length) return head + `<div class="empty"><p>Log a few workouts and your trends show up here: weekly volume by muscle group, balance, and your best lifts.</p></div>`;
+    // weekly sets stacked by muscle group, last 12 weeks
+    const thisWeek = weekStart(new Date());
+    const weeks = Array.from({ length: 12 }, (_, i) => {
+      const start = new Date(thisWeek);
+      start.setDate(start.getDate() - 7 * (11 - i));
+      return { start, sets: Object.fromEntries(GROUPS.map((g) => [g.key, 0])), total: 0, n: 0 };
+    });
+    asc.forEach((s) => {
+      const w = weeks.find((x) => { const end = new Date(x.start); end.setDate(end.getDate() + 7); return new Date(s.start) >= x.start && new Date(s.start) < end; });
+      if (!w) return;
+      w.n++;
+      s.entries.forEach((en) => { const g = groupOf(en.id); if (g) { w.sets[g.key] += en.sets.length; w.total += en.sets.length; } });
+    });
+    const W = 336, H = 150, padL = 22, padB = 18, bw = (W - padL) / 12;
+    const max = Math.max(10, ...weeks.map((w) => w.total));
+    const yS = (v) => ((H - padB - 6) * v) / max;
+    const ticks = [0, Math.round(max / 2), max];
+    const bars = weeks.map((w, i) => {
+      let y = H - padB;
+      const x = padL + i * bw + bw * 0.16;
+      const segs = GROUPS.map((g) => {
+        const h = yS(w.sets[g.key]);
+        if (!h) return "";
+        y -= h;
+        return `<rect class="f-${g.plate}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw * 0.68).toFixed(1)}" height="${h.toFixed(1)}"><title>${g.label}: ${w.sets[g.key]} sets</title></rect>`;
       }).join("");
-      return `<section class="sess${open ? " open" : ""}">
-        <button class="sess-head" data-a="sess" data-v="${esc(s.id)}" aria-expanded="${open}">
-          <span><b>${esc(day(s.start))}${s.ai ? ' <i class="spark-mark" title="Analyzed by AI coach">✨</i>' : ""}</b><span class="muted small">${s.title ? `${esc(s.title)}, ` : ""}${s.end ? `${minutesBetween(s.start, s.end)} min, ` : ""}${plural(s.entries.length, "exercise")}, ${plural(v.n, "set")}${v.v ? `, ${fmtNum(v.v)} ${UNIT}` : ""}</span></span>
-          <span class="dots">${dots}</span></button>
-        ${open ? `<div class="sess-body">${s.entries.map((en) => `<div class="sess-ex">
-            <button class="entry-name" data-a="open" data-v="${esc(en.id)}">${esc(en.name)}</button>
-            <span class="muted small">${esc(fmtSets(en.sets))}</span></div>`).join("")}
-          ${renderAnalysis(s)}
-          <div class="row"><button class="link" data-a="repeat" data-v="${esc(s.id)}">Repeat this workout</button>
-          <button class="link danger${S.armed === "del" + s.id ? " armed" : ""}" data-a="del-sess" data-v="${esc(s.id)}">${S.armed === "del" + s.id ? "Tap to delete" : "Delete"}</button></div></div>` : ""}
-      </section>`;
+      const label = i % 3 === 0 || i === 11 ? `<text class="ax" x="${(x + bw * 0.34).toFixed(1)}" y="${H - 4}" text-anchor="middle">${i === 11 ? "Now" : w.start.toLocaleDateString(undefined, { day: "numeric", month: "numeric" })}</text>` : "";
+      return segs + label;
     }).join("");
-    return head + `<p class="lead">${esc(summary)}</p>` + items;
+    const grid = ticks.map((t) => `<line class="gl" x1="${padL}" x2="${W}" y1="${(H - padB - yS(t)).toFixed(1)}" y2="${(H - padB - yS(t)).toFixed(1)}"/><text class="ax" x="${padL - 4}" y="${(H - padB - yS(t) + 3).toFixed(1)}" text-anchor="end">${t}</text>`).join("");
+    // streak of weeks with at least one workout
+    let streak = 0;
+    for (let i = 11; i >= 0; i--) { if (weeks[i].n) streak++; else if (i === 11) continue; else break; }
+    // balance, last 4 weeks
+    const stats = groupStats(28);
+    const maxSets = Math.max(1, ...stats.map((x) => x.sets_last_28_days));
+    const balance = stats.map((x) => {
+      const g = GROUPS.find((y) => y.key === x.group);
+      const d = x.days_since_trained;
+      return `<div class="bal"><span class="bal-name"><i class="dot pl-${g.plate}"></i>${g.label}</span>
+        <span class="bal-bar"><i class="pl-${g.plate}" style="width:${Math.round((x.sets_last_28_days / maxSets) * 100)}%"></i></span>
+        <span class="bal-n">${x.sets_last_28_days}</span>
+        <span class="bal-d muted small">${d == null ? "not yet" : d === 0 ? "today" : d === 1 ? "1 day" : `${d} days`}</span></div>`;
+    }).join("");
+    // best lifts
+    const lifts = {};
+    asc.forEach((s) => s.entries.forEach((en) => {
+      if (!en.sets.length) return;
+      const best = Math.max(...en.sets.map(e1rm));
+      (lifts[en.id] = lifts[en.id] || { id: en.id, name: en.name, pts: [], weighted: false }).pts.push({ d: s.start, v: best });
+      if (en.sets.some((x) => x.w)) lifts[en.id].weighted = true;
+    }));
+    const top = Object.values(lifts).filter((l) => l.pts.length >= 2).sort((a, b) => b.pts.length - a.pts.length || a.name.localeCompare(b.name)).slice(0, 6);
+    const spark = (pts) => {
+      const vs = pts.map((p) => p.v), lo = Math.min(...vs), hi = Math.max(...vs), sp = hi - lo || 1;
+      const xy = pts.map((p, i) => `${(2 + (i * 86) / (pts.length - 1)).toFixed(1)},${(26 - ((p.v - lo) * 22) / sp).toFixed(1)}`).join(" ");
+      return `<svg class="mini" viewBox="0 0 90 30" aria-hidden="true"><polyline points="${xy}"/></svg>`;
+    };
+    const liftRows = top.map((l) => {
+      const a = l.pts[0].v, b = l.pts[l.pts.length - 1].v, diff = b - a;
+      const now = l.weighted ? `${fmtNum(Math.round(b * 10) / 10)} ${UNIT} est. max` : `${Math.round(b)} reps best set`;
+      const delta = Math.abs(diff) < 0.05 ? "no change yet" : `${diff > 0 ? "+" : "−"}${l.weighted ? `${fmtNum(Math.round(Math.abs(diff) * 10) / 10)} ${UNIT}` : `${Math.round(Math.abs(diff))} reps`} since ${new Date(l.pts[0].d).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
+      return `<button class="lift" data-a="open" data-v="${esc(l.id)}"><span><b>${esc(l.name)}</b><span class="muted small">${now}, <span class="${diff > 0.05 ? "up" : diff < -0.05 ? "down" : ""}">${delta}</span></span></span>${spark(l.pts)}</button>`;
+    }).join("");
+    const month = asc.filter((s) => { const d = new Date(s.start), n = new Date(); return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear(); });
+    const mv = volume(month.flatMap((s) => s.entries));
+    const due = [...stats].sort((a, b) => (b.days_since_trained ?? 99) - (a.days_since_trained ?? 99))[0];
+    const dueG = GROUPS.find((g) => g.key === due.group);
+    return head + `<p class="lead">This month: ${plural(month.length, "workout")}, ${plural(mv.n, "set")}${mv.v ? `, ${fmtNum(mv.v)} ${UNIT} lifted` : ""}.
+        ${streak ? `${streak >= 2 ? `<b>${streak} weeks in a row</b> with at least one workout.` : "Trained this week."}` : ""}</p>
+      <h2>Sets per week</h2>
+      <svg class="weeks" viewBox="0 0 ${W} ${H}" role="img" aria-label="Sets per week for the last 12 weeks, stacked by muscle group">${grid}${bars}</svg>
+      <div class="legend">${GROUPS.map((g) => `<span class="lg"><i class="dot pl-${g.plate}"></i>${g.label}</span>`).join("")}</div>
+      <h2>Muscle balance, last 4 weeks</h2>
+      <p class="muted small">Working sets per muscle group, and days since you last trained it. Most due: <b>${dueG.label}</b>.</p>
+      <div class="balance">${balance}</div>
+      ${top.length ? `<h2>Your lifts</h2><p class="muted small">Best set per workout as an estimated one-rep max (reps for bodyweight moves). Tap one for details.</p><div class="lifts">${liftRows}</div>` : ""}
+      <button class="secondary ai" data-a="build-due" data-v="${dueG.key}">✨ Build a ${dueG.label.toLowerCase()} workout</button>`;
+  }
+
+  // ------------------------------------------------ Strava post
+  const STRAVA_MODES = [
+    { key: "serious", label: "Serious" },
+    { key: "funny", label: "Funny" },
+    { key: "neutral", label: "Neutral" },
+  ];
+  const STRAVA_TONE = {
+    serious: "Tone: serious and focused, like an athlete's training log. Lead with the main lifts and any progress. Calm and confident, no jokes.",
+    funny: "Tone: funny and self-ironic, like a teammate teasing with affection: home-gym life, the bench as a loyal friend, early alarms if early_start is true, and the app name Go2FGym, short for 'go to the f***ing gym' (always write it as Go2FGym). Build one clever joke on a real detail and still mention the key work.",
+    neutral: "Tone: neutral and informative. A plain summary of the focus, duration, main lifts and any progress.",
+  };
+  const STRAVA_SCHEMA = {
+    type: "object", additionalProperties: false, required: ["title", "description"],
+    properties: { title: { type: "string" }, description: { type: "string" } },
+  };
+  function liftLine(en) {
+    const same = en.sets.every((x) => x.w === en.sets[0].w && x.r === en.sets[0].r);
+    if (same) return `${en.name}: ${en.sets.length}×${en.sets[0].r}${en.sets[0].w ? ` @ ${fmtNum(en.sets[0].w)} ${UNIT}` : ""}`;
+    return `${en.name}: ${en.sets.map((x) => (x.w ? `${fmtNum(x.w)}×${x.r}` : `${x.r}`)).join(", ")}${en.sets.some((x) => x.w) ? ` ${UNIT}` : ""}`;
+  }
+  function personalBests(s) {
+    return s.entries.filter((en) => en.sets.length).map((en) => {
+      const prior = S.history.sessions.filter((x) => x.start < s.start).flatMap((x) => x.entries.filter((e) => e.id === en.id)).flatMap((e) => e.sets);
+      if (!prior.length) return null;
+      const now = Math.max(...en.sets.map(e1rm)), before = Math.max(...prior.map(e1rm));
+      return now > before + 0.05 ? en.name : null;
+    }).filter(Boolean);
+  }
+  function stravaTemplate(s) {
+    const groups = sessionGroups(s).map((g) => g.label);
+    const v = volume(s.entries);
+    const pbs = personalBests(s);
+    const title = `${groups.length ? groups.join(" + ") : "Strength"} at home`;
+    const lines = [
+      `${s.end ? `${minutesBetween(s.start, s.end)} min home strength session, ` : "Home strength session, "}${plural(v.n, "set")}${v.v ? `, ${fmtNum(v.v)} ${UNIT} lifted` : ""}.`,
+      ...[...s.entries].sort((a, b) => b.sets.length - a.sets.length).slice(0, 4).map(liftLine),
+    ];
+    if (pbs.length) lines.push(`New best: ${pbs.join(", ")}.`);
+    return { title, description: lines.join("\n"), basic: true };
+  }
+  async function stravaPost(id, mode) {
+    const s = S.history.sessions.find((x) => x.id === id);
+    if (!s || S.aiBusy) return;
+    if (!S.ai.hasKey) return toast("Add your OpenAI API key under Build with AI first.", true);
+    const start = new Date(s.start);
+    const v = volume(s.entries);
+    const input = {
+      mode,
+      workout: {
+        date: isoDay(s.start), weekday: start.toLocaleDateString("en", { weekday: "long" }),
+        start_time: `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`,
+        early_start: start.getHours() < 8, duration_minutes: s.end ? minutesBetween(s.start, s.end) : null,
+        title: s.title || null, muscle_groups: sessionGroups(s).map((g) => g.label),
+        total_sets: v.n, total_kg_lifted: Math.round(v.v),
+        exercises: s.entries.map((en) => ({ lifts: liftLine(en), previous: previousFor(en.id, s.start) })),
+        personal_bests_today: personalBests(s),
+      },
+    };
+    const instructions = [
+      "You write the title and description for a Strava activity: a home strength workout. Write in English.",
+      "Use only the facts given. Never invent numbers, exercises, places or people.",
+      "Title: at most 8 words, at most one emoji.",
+      "Description: 2 to 5 short lines separated by newlines. You may list 2 to 4 key lifts like 'Dumbbell Bench Press: 3×10 @ 22 kg'. Mention personal bests if there are any. At most 500 characters. No hashtags.",
+      "Never mock body, weight, age or looks.",
+      STRAVA_TONE[mode],
+    ].join(" ");
+    S.aiBusy = `st:${id}`;
+    render();
+    const res = await aiCall("strava_post", instructions, input, STRAVA_SCHEMA);
+    S.aiBusy = null;
+    const s2 = S.history.sessions.find((x) => x.id === id);
+    if (res && res.title && s2) {
+      const s = s2;
+      s.strava = Object.assign({}, s.strava, { [mode]: { title: String(res.title).slice(0, 120), description: String(res.description || "").slice(0, 700) } });
+      S.stravaMode[id] = mode;
+      send("save", { session: s });
+    }
+    render();
+  }
+  function renderStrava(s) {
+    const mode = S.stravaMode[s.id] || S.ai.stravaMode;
+    const busy = S.aiBusy === `st:${s.id}`;
+    let post = s.strava && s.strava[mode];
+    if (!post && !S.ai.hasKey && mode === "neutral") post = stravaTemplate(s);
+    const seg = `<div class="seg">${STRAVA_MODES.map((x) => `<button data-a="st-mode" data-v="${esc(s.id)}|${x.key}" aria-pressed="${mode === x.key}" ${S.aiBusy ? "disabled" : ""}>${x.label}</button>`).join("")}</div>`;
+    let body;
+    if (busy) body = `<p class="busy small">Writing a ${mode} title and description…</p>`;
+    else if (post)
+      body = `<div class="st-post"><p class="st-title">${esc(post.title)}</p><p class="st-desc">${esc(post.description)}</p></div>
+        <div class="st-actions"><button class="chip" data-a="st-copy" data-v="${esc(s.id)}|title">Copy title</button><button class="chip" data-a="st-copy" data-v="${esc(s.id)}|description">Copy description</button><button class="chip" data-a="st-copy" data-v="${esc(s.id)}|both">Copy both</button></div>
+        ${post.basic ? `<p class="muted small">Basic version. Add an OpenAI key under Build with AI for AI-written posts in any tone.</p>` : `<button class="link small" data-a="st-gen" data-v="${esc(s.id)}" ${S.aiBusy ? "disabled" : ""}>Write another ${mode} version</button>`}`;
+    else if (!S.ai.hasKey) body = `<p class="muted small">${cap(mode)} posts are written by the AI coach. Add your OpenAI key under <b>Build with AI</b>, or pick Neutral for a basic version.</p>`;
+    else body = `<button class="ai-btn" data-a="st-gen" data-v="${esc(s.id)}" ${S.aiBusy ? "disabled" : ""}>✨ Write a ${mode} Strava post</button>`;
+    return `<div class="strava"><p class="kicker st-k">Strava post</p>${seg}${body}</div>`;
   }
 
   function renderTabs() {
@@ -1264,7 +1529,7 @@ function webApp() {
     $app.innerHTML = !S.consent || S.showDisclaimer ? renderDisclaimer()
       : S.detailId ? renderDetail()
       : S.tab === "train" ? (!S.lib.length ? renderHome() : S.trainView === "list" ? renderList() : S.trainView === "ai" ? renderBuilder() : S.trainView === "plan" ? renderPlan() : renderHome())
-      : S.tab === "workout" ? renderWorkout() : renderHistory();
+      : S.tab === "workout" ? renderWorkout() : S.tab === "progress" ? renderProgress() : renderHistory();
     if (S.consent) renderTabs();
     else $tabs.innerHTML = "";
     window.scrollTo(0, same ? y : key.startsWith("detail:") ? 0 : S.scroll[key] || 0);
@@ -1415,6 +1680,28 @@ function webApp() {
       render();
     },
     sess: (v) => { S.openSession = S.openSession === v ? null : v; render(); },
+    "hist-view": (v) => { S.histView = v; render(); },
+    "cal-day": (v) => { S.cal.sel = S.cal.sel === v ? null : v; render(); },
+    "cal-prev": () => { const d = new Date(S.cal.y, S.cal.m - 1, 1); S.cal = { y: d.getFullYear(), m: d.getMonth(), sel: null }; render(); },
+    "cal-next": () => { const d = new Date(S.cal.y, S.cal.m + 1, 1); S.cal = { y: d.getFullYear(), m: d.getMonth(), sel: null }; render(); },
+    "build-due": (v) => openBuilder([v]),
+    "st-mode": (v) => {
+      const [id, mode] = v.split("|");
+      S.stravaMode[id] = mode;
+      const s = S.history.sessions.find((x) => x.id === id);
+      if (s && !(s.strava && s.strava[mode]) && S.ai.hasKey) stravaPost(id, mode);
+      else render();
+    },
+    "st-gen": (v) => stravaPost(v, S.stravaMode[v] || S.ai.stravaMode),
+    "st-copy": (v) => {
+      const [id, what] = v.split("|");
+      const s = S.history.sessions.find((x) => x.id === id);
+      if (!s) return;
+      const mode = S.stravaMode[id] || S.ai.stravaMode;
+      const post = (s.strava && s.strava[mode]) || stravaTemplate(s);
+      const text = what === "title" ? post.title : what === "description" ? post.description : `${post.title}\n\n${post.description}`;
+      send("copy", { text, label: what === "title" ? "Title" : what === "description" ? "Description" : "Title and description" });
+    },
     "del-sess": (v) => arm("del" + v, () => {
       S.history.sessions = S.history.sessions.filter((x) => x.id !== v);
       send("delete", { id: v });
@@ -1488,8 +1775,8 @@ function webApp() {
       render();
       toast(`Library ready: ${lib.length} exercises${meta && meta.failed ? `. ${meta.failed} photos failed, tap Update library to retry.` : ""}`, !!(meta && meta.failed));
     },
-    onHistory(h) {
-      if (h && Array.isArray(h.sessions)) S.history = h;
+    onHistory() {
+      // Saves are echoed back; the in-app copy is already the newest, so just refresh the view.
       if (S.tab === "history" && !S.detailId) render();
     },
     onError(msg) { S.sync = null; render(); toast(msg, true); },
@@ -1615,6 +1902,58 @@ p{margin:0 0 10px}
 .cta{margin-top:18px}
 .chips.wrap{flex-wrap:wrap;overflow:visible;margin:0 0 6px;padding:2px 0}
 .seg4{grid-template-columns:repeat(4,1fr)}
+.seg2{grid-template-columns:repeat(2,1fr)}
+.cal{background:var(--surface);border-radius:14px;padding:10px 8px 8px}
+.cal-head{display:flex;align-items:center;justify-content:space-between;padding:0 4px 8px}
+.cal-head b{font:800 20px/1 var(--display)}
+.cal-nav{width:40px;height:36px;font-size:24px;line-height:1;text-align:center;color:var(--accent);border-radius:8px}
+.cal-nav:disabled{opacity:.25}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-wd{text-align:center;font-size:12px;font-weight:700;color:var(--muted);padding-bottom:4px}
+.cd{position:relative;aspect-ratio:1/1.08;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:5px;gap:3px;text-align:center}
+.cd .cd-n{font-size:14px;font-weight:600;color:var(--muted);line-height:1}
+.cd.has{background:var(--bg)}
+.cd.has .cd-n{color:var(--ink);font-weight:800}
+.cd.today .cd-n{color:var(--accent)}
+.cd.today{box-shadow:inset 0 0 0 1.5px var(--accent)}
+.cd.sel{background:var(--ink)}.cd.sel .cd-n{color:var(--bg)}
+.cd-dots{display:flex;flex-wrap:wrap;justify-content:center;gap:2px;max-width:30px}
+.cd-dots .dot{width:8px;height:8px}
+.cd.sel .dot{box-shadow:0 0 0 1px var(--bg)}
+.cd-more{font-size:10px;font-weight:700;color:var(--muted);line-height:8px}
+.cd:disabled{cursor:default}
+.month-sum{margin:12px 2px 6px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin:4px 2px 6px}
+.lg{display:inline-flex;align-items:center;gap:5px;font-size:13px}
+.lg b{font-variant-numeric:tabular-nums}
+.lg.zero{opacity:.45}
+.weeks{width:100%;height:auto;display:block;background:var(--surface);border-radius:14px;padding:8px 6px 2px}
+.weeks .gl{stroke:var(--line);stroke-width:1}
+.weeks .ax{font:10px var(--body);fill:var(--muted)}
+.weeks rect{stroke:rgba(0,0,0,.18);stroke-width:.5}
+.f-red{fill:var(--p-red)}.f-blue{fill:var(--p-blue)}.f-yellow{fill:var(--p-yellow)}.f-green{fill:var(--p-green)}.f-white{fill:var(--p-white)}.f-steel{fill:var(--p-steel)}.f-iron{fill:var(--p-iron)}
+@media (prefers-color-scheme:dark){.weeks rect{stroke:rgba(255,255,255,.22)}}
+.balance{background:var(--surface);border-radius:14px;padding:6px 12px}
+.bal{display:grid;grid-template-columns:92px 1fr 26px 74px;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line)}
+.bal:first-child{border-top:0}
+.bal-name{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600}
+.bal-bar{height:10px;border-radius:5px;background:var(--bg);overflow:hidden}
+.bal-bar i{display:block;height:100%;border-radius:5px;background:var(--pc);box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}
+.bal-n{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.bal-d{text-align:right}
+.lifts{background:var(--surface);border-radius:14px;overflow:hidden}
+.lift{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:11px 14px;border-top:1px solid var(--line)}
+.lift:first-child{border-top:0}
+.lift b{display:block;font-weight:600;line-height:1.25}
+.lift .up{color:var(--done);font-weight:700}.lift .down{color:var(--accent);font-weight:700}
+.mini{width:90px;height:30px;flex:none}
+.mini polyline{fill:none;stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke}
+.strava{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:var(--bg)}
+.st-k{color:#FC4C02;margin:0 0 8px}
+.st-post{background:var(--surface);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.st-title{font-weight:800;margin:0 0 4px}
+.st-desc{white-space:pre-line;margin:0;font-size:15px}
+.st-actions{display:flex;flex-wrap:wrap;gap:6px}
 textarea.search{resize:none;line-height:1.4}
 .secondary.ai{border-color:var(--accent);color:var(--accent);font-weight:700}
 .busy{animation:pulse 1.2s ease-in-out infinite}
@@ -1668,7 +2007,7 @@ textarea.search{resize:none;line-height:1.4}
 #toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 10px);transform:translate(-50%,-150%);max-width:88vw;padding:10px 16px;border-radius:10px;
   background:var(--ink);color:var(--bg);font-size:15px;font-weight:600;z-index:30;transition:transform .25s ease;pointer-events:none;text-align:center}
 #toast.show{transform:translate(-50%,0)}#toast.err{background:var(--accent);color:#fff}
-#tabs{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface);border-top:1px solid var(--line);
+#tabs{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface);border-top:1px solid var(--line);
   padding-bottom:env(safe-area-inset-bottom,0px);z-index:20}
 #tabs button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 0 10px;font:600 12px var(--body);color:var(--muted)}
 #tabs button[aria-current="page"]{color:var(--ink)}
