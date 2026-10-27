@@ -1493,15 +1493,28 @@ function webApp() {
     if (!s) { el.hidden = true; return; }
     const gs = sessionGroups(s);
     const mins = s.end ? minutesBetween(s.start, s.end) : null;
-    el.innerHTML = `<span class="last-k">Last</span>${esc(relDay(s.start))}<span class="dots">${dotsFor(gs)}</span>${gs.length ? `${plural(gs.length, "group")}: ${esc(gs.map((g) => g.label).join(", "))}` : plural(s.entries.length, "exercise")}${mins ? `, ${mins} min` : ""}`;
+    el.innerHTML = `<span class="last-1"><span class="last-k">Last</span>${esc(relDay(s.start))}${mins ? `, ${mins} min` : ""}</span>
+      <span class="last-2"><span class="dots">${dotsFor(gs)}</span>${gs.length ? `${plural(gs.length, "group")}: ${esc(gs.map((g) => g.label).join(", "))}` : plural(s.entries.length, "exercise")}</span>`;
     el.setAttribute("aria-label", `Last workout ${relDay(s.start)}: ${gs.map((g) => g.label).join(", ")}${mins ? `, ${mins} minutes` : ""}. Opens it in History.`);
     el.dataset.v = s.start;
     el.hidden = false;
   }
   function layoutBand() {
+    // Scriptable draws its Close/share bar over the top of the page, under the status bar.
+    // When that bar is there (tall inset), the pill sits in the middle of its row, between
+    // Close and share. Otherwise a slim row is added below the status bar for it.
     const probe = $("#sat");
     const inset = probe ? probe.offsetHeight : 0;
-    document.documentElement.style.setProperty("--band", `${Math.max(inset, 40)}px`);
+    const root = document.documentElement.style;
+    if (inset >= 80) {
+      root.setProperty("--band", `${inset}px`);
+      root.setProperty("--pill-top", `${inset - 22 - 17}px`);
+      root.setProperty("--pill-max", "min(62vw, calc(100vw - 150px))");
+    } else {
+      root.setProperty("--band", `${inset + 44}px`);
+      root.setProperty("--pill-top", `${inset + 5}px`);
+      root.setProperty("--pill-max", "calc(100vw - 24px)");
+    }
   }
 
   // ------------------------------------------------ Strava post
@@ -1918,12 +1931,14 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 var(--bo
 body{padding:var(--band,env(safe-area-inset-top,0px)) 0 calc(150px + env(safe-area-inset-bottom,0px))}
 body::before{content:"";position:fixed;inset:0 0 auto;height:var(--band,env(safe-area-inset-top,0px));background:var(--bg);z-index:10}
 #sat{position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none}
-#last{position:fixed;z-index:12;left:50%;top:calc(var(--band,40px) / 2 - 13px);transform:translateX(-50%);display:flex;align-items:center;gap:6px;
-  height:26px;max-width:calc(100vw - 24px);padding:0 12px;border-radius:999px;background:var(--surface);border:1px solid var(--line);
-  font:500 12.5px/1 var(--body);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#last{position:fixed;z-index:12;left:50%;top:var(--pill-top,5px);transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  height:34px;max-width:var(--pill-max,calc(100vw - 24px));padding:0 12px;border-radius:12px;background:var(--surface);border:1px solid var(--line);
+  font:500 11.5px/1.1 var(--body);color:var(--muted);white-space:nowrap;overflow:hidden}
 #last[hidden]{display:none}
-#last .last-k{font-weight:800;color:var(--accent);text-transform:uppercase;font-size:10.5px;letter-spacing:.05em}
-#last .dots{gap:3px}#last .dot{width:8px;height:8px}
+#last .last-1,#last .last-2{display:flex;align-items:center;gap:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+#last .last-1{color:var(--ink);font-weight:600}
+#last .last-k{font-weight:800;color:var(--accent);text-transform:uppercase;font-size:9.5px;letter-spacing:.06em}
+#last .dots{gap:3px;flex:none}#last .dot{width:7px;height:7px}
 .hbtn{flex:none;background:var(--accent);color:var(--accent-ink);font:700 15px/1 var(--body);padding:9px 14px;border-radius:999px;white-space:nowrap;text-align:center}
 .hbtn:disabled{opacity:.4}
 #app{max-width:640px;margin:0 auto;padding:0 16px 32px}
@@ -2109,7 +2124,7 @@ textarea.search{resize:none;line-height:1.4}
 .rest-time{font:800 28px/1 var(--display);font-variant-numeric:tabular-nums;margin-right:auto;min-width:3ch}
 #rest button{font-weight:700;font-size:15px;padding:6px 0;position:relative}
 #rest.go{background:var(--done);color:#fff}
-#toast{position:fixed;left:50%;top:calc(var(--band,40px) / 2 - 17px);transform:translate(-50%,-8px);max-width:88vw;padding:8px 16px;border-radius:12px;
+#toast{position:fixed;left:50%;top:calc(var(--band,44px) + 8px);transform:translate(-50%,-8px);max-width:88vw;padding:8px 16px;border-radius:12px;
   background:var(--ink);color:var(--bg);font-size:15px;font-weight:600;z-index:30;pointer-events:none;text-align:center;
   opacity:0;visibility:hidden;transition:opacity .2s ease,transform .2s ease,visibility .2s}
 #toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}#toast.err{background:var(--accent);color:#fff}
