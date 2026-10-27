@@ -869,7 +869,11 @@ function webApp() {
     const b = S.builder;
     const muscles = (b.groups.length ? GROUPS.filter((g) => b.groups.includes(g.key)) : GROUPS).flatMap((g) => g.muscles);
     const cands = S.lib.filter((e) => b.equipment.includes(e.eq) && e.cat !== "stretching" && e.pm.some((m) => muscles.includes(m)));
-    if (!cands.length) return toast("No exercises match that equipment and those muscles.", true);
+    if (!cands.length) {
+      S.trainView = "ai";
+      render();
+      return toast("No exercises match that equipment and those muscles.", true);
+    }
     const now = new Date().toISOString();
     const input = {
       today: isoDay(now),
@@ -891,7 +895,10 @@ function webApp() {
     render();
     const res = await aiCall("workout_plan", PLAN_INSTRUCTIONS, input, PLAN_SCHEMA);
     S.aiBusy = null;
-    if (!res) return render();
+    if (!res) {
+      if (!S.plan) S.trainView = "ai";
+      return render();
+    }
     const clamp = (n, lo, hi, d) => (Number.isFinite(+n) ? Math.min(hi, Math.max(lo, Math.round(+n))) : d);
     const seen = new Set();
     const exercises = (res.exercises || []).filter((x) => S.byId[x.id] && !seen.has(x.id) && seen.add(x.id)).map((x) => ({
@@ -901,6 +908,7 @@ function webApp() {
     }));
     if (!exercises.length) {
       toast("The AI coach didn't return usable exercises. Try again.", true);
+      if (!S.plan) S.trainView = "ai";
       return render();
     }
     S.plan = {
@@ -1005,9 +1013,21 @@ function webApp() {
       <p class="muted small">${busy ? "<b>Building your workout…</b> " : ""}${S.ai.hasKey ? "Tap <b>Build workout</b> at the top when you're ready. " : "Save your key above to enable <b>Build workout</b>. "}AI suggestions can be wrong. Check every weight before you lift it.</p>`;
   }
 
+  function renderBuilding() {
+    const b = S.builder;
+    const labels = b.groups.length ? b.groups.map((k) => GROUPS.find((g) => g.key === k).label).join(" + ") : "Muscles picked by the AI";
+    const level = (INTENSITY.find((i) => i.key === b.intensity) || INTENSITY[1]).label.toLowerCase();
+    return `<header class="bar"><button class="back" data-a="b-edit">‹ Settings</button></header>
+      <p class="kicker">✨ Your AI coach</p>
+      <h1 class="title busy">Building your next workout…</h1>
+      <p class="lead"><b>${esc(labels)}</b>, about ${b.minutes} min, ${level}${b.why ? `, based on ${esc(b.why)}` : ""}. Weights come from your last sessions.</p>
+      <div class="list skel">${[0, 1, 2, 3].map(() => `<div class="ex plan-ex"><div class="thumb"></div><div><div class="sk sk1"></div><div class="sk sk2"></div></div></div>`).join("")}</div>
+      <p class="muted small">This usually takes a few seconds. Tap Settings to change the choices.</p>`;
+  }
+
   function renderPlan() {
     const p = S.plan;
-    if (!p) return renderBuilder();
+    if (!p) return S.aiBusy === "plan" ? renderBuilding() : renderBuilder();
     const busy = S.aiBusy === "plan";
     const total = p.exercises.reduce((n, x) => n + x.sets, 0);
     const replacing = S.session && S.session.entries.length;
@@ -1421,10 +1441,37 @@ function webApp() {
     const latest = sessionsDesc()[0];
     if (latest && latest.ai && latest.ai.next && latest.ai.next.groups.length) {
       const f = latest.ai.focus_next.find((x) => latest.ai.next.groups.includes(x.group));
-      return { groups: latest.ai.next.groups, intensity: f ? (f.intensity === "light" ? "easy" : f.intensity) : null, why: "your AI coach's suggestion" };
+      return { groups: latest.ai.next.groups, intensity: f ? (f.intensity === "light" ? "easy" : f.intensity) : null, why: "your AI coach's suggestion", idea: latest.ai.next.idea };
     }
     const due = groupStats(28).sort((a, b) => (b.days_since_trained ?? 99) - (a.days_since_trained ?? 99)).slice(0, 2).map((x) => x.group);
-    return { groups: due, intensity: null, why: "your most-due muscle groups" };
+    return { groups: due, intensity: null, why: "your most-due muscle groups", idea: "" };
+  }
+  function usualMinutes() {
+    const ds = sessionsDesc().slice(0, 6).filter((s) => s.end).map((s) => minutesBetween(s.start, s.end)).sort((a, b) => a - b);
+    if (!ds.length) return S.builder.minutes;
+    const med = ds[Math.floor(ds.length / 2)];
+    return [20, 30, 45, 60].reduce((best, m) => (Math.abs(m - med) < Math.abs(best - med) ? m : best), 45);
+  }
+  function buildNextNow() {
+    const n = nextSuggestion();
+    const eqs = libEquipment();
+    S.builder = {
+      groups: n.groups.filter((k) => GROUP_KEYS.includes(k)),
+      equipment: S.builder.equipment.filter((q) => eqs.includes(q)).length ? S.builder.equipment.filter((q) => eqs.includes(q)) : eqs,
+      minutes: usualMinutes(), intensity: n.intensity || "moderate",
+      note: n.idea ? `My coach suggested: ${n.idea}`.slice(0, 300) : "",
+      why: n.why,
+    };
+    S.tab = "train";
+    S.detailId = null;
+    if (!S.ai.hasKey) {
+      S.trainView = "ai";
+      render();
+      return toast("Add your OpenAI key to build workouts instantly.", true);
+    }
+    S.plan = null;
+    S.trainView = "plan";
+    buildPlan();
   }
   function nextButton() {
     const n = nextSuggestion();
@@ -1726,11 +1773,7 @@ function webApp() {
     "cal-day": (v) => { S.cal.sel = S.cal.sel === v ? null : v; render(); },
     "cal-prev": () => { const d = new Date(S.cal.y, S.cal.m - 1, 1); S.cal = { y: d.getFullYear(), m: d.getMonth(), sel: null }; render(); },
     "cal-next": () => { const d = new Date(S.cal.y, S.cal.m + 1, 1); S.cal = { y: d.getFullYear(), m: d.getMonth(), sel: null }; render(); },
-    "build-next-h": () => {
-      const n = nextSuggestion();
-      if (n.intensity) S.builder.intensity = n.intensity;
-      openBuilder(n.groups);
-    },
+    "build-next-h": () => buildNextNow(),
     last: (v) => { focusDay(v); S.detailId = null; S.showDisclaimer = false; S.tab = "history"; render(); },
     "st-mode": (v) => {
       const [id, mode] = v.split("|");
@@ -2022,6 +2065,10 @@ textarea.search{resize:none;line-height:1.4}
 .keyrow{display:flex;gap:8px;align-items:center}
 .keyrow input{flex:1;min-width:0;font:16px var(--body);padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);-webkit-appearance:none}
 .plan-ex{grid-template-columns:64px 1fr}
+.skel .sk{height:12px;border-radius:6px;background:var(--line);margin:6px 0}
+.skel .sk1{width:70%}.skel .sk2{width:45%}
+.skel{animation:pulse 1.2s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.skel{animation:none}}
 .plan-ex .ex-meta b{color:var(--ink);font-weight:700}
 .coach-note{margin:2px 0 4px;color:var(--ink)}
 .ai-btn{display:block;width:100%;margin:12px 0 4px;padding:12px;border-radius:12px;border:1.5px solid var(--accent);color:var(--accent);font-weight:700;text-align:center}

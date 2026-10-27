@@ -97,6 +97,7 @@ The AI only chooses exercises from your library, keeps weights at or close to wh
 | Finish | **Finish workout**, then tap again to save |
 | Do a past workout again | **History**, open the workout, **Repeat this workout** |
 | Let AI build a workout | **Train › ✨ Build a workout with AI** |
+| Get your next workout in one tap | **✨ Build next** at the top of History or Progress. It uses the coach's last suggestion (or your most-due muscles), your usual workout length and all your equipment, and goes straight to the plan. **‹ Settings** adjusts it. |
 | Get AI feedback on a past workout | **History**, open it, **✨ Analyze with AI coach** |
 | See your month | **History › Calendar**, tap a day; **‹ ›** change month |
 | See your trends | **Progress** tab; tap a lift for its details |
