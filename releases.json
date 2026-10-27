@@ -1,0 +1,118 @@
+{
+  "name": "Go2FGym",
+  "appId": "go2fgym",
+  "script": "Go2FGym.js",
+  "releases": [
+    {
+      "version": "1.5.0",
+      "date": "2026-10-27",
+      "title": "Never miss an update",
+      "highlights": [
+        { "icon": "🔔", "title": "Update reminders", "text": "The app tells you when a new version is out, and waits two days if you tap Later." },
+        { "icon": "⬆️", "title": "One-tap update", "text": "Update right from the app. No need to run the installer again." },
+        { "icon": "✨", "title": "See what's new first", "text": "Every update shows its three best features before you install it." }
+      ],
+      "changes": [
+        "Update check on start, with an update sheet showing the release's three highlights",
+        "Update now downloads the new version over the running script after checking it is newer and really Go2FGym",
+        "Later, or tapping outside the sheet, snoozes the offer for two days",
+        "Version shown at the bottom of the Train screen",
+        "checkUpdates setting to turn update checks off",
+        "releases.json, CHANGELOG.md and docs/RELEASING.md for release notes"
+      ],
+      "fixes": []
+    },
+    {
+      "version": "1.4.0",
+      "date": "2026-10-27",
+      "title": "Your next workout in one tap",
+      "highlights": [
+        { "icon": "⚡", "title": "Instant next workout", "text": "Build next creates a plan straight from your history, no form to fill in." },
+        { "icon": "🕒", "title": "Last workout at a glance", "text": "A small chip at the top shows when you last trained, which muscles and how long." },
+        { "icon": "👆", "title": "Buttons where you need them", "text": "Build workout and Build next now sit in the header of their screens." }
+      ],
+      "changes": [
+        "Build next in History and Progress builds the plan immediately from the coach's suggestion or your most-due muscle groups, your usual workout length and all your equipment",
+        "Loading screen while the next workout is built; Settings opens the pre-filled form",
+        "Last-workout chip in the top bar, tap it to open that day in History",
+        "Build workout button moved to the builder's header",
+        "Export CSV moved to the bottom of History"
+      ],
+      "fixes": [
+        "A stray white dot showed at the top of the screen",
+        "The last-workout chip sat under the camera on iPhones with a Dynamic Island"
+      ]
+    },
+    {
+      "version": "1.3.0",
+      "date": "2026-10-26",
+      "title": "See your progress",
+      "highlights": [
+        { "icon": "🗓", "title": "Training calendar", "text": "See every workout on a month calendar, with dots for the muscle groups trained." },
+        { "icon": "📈", "title": "Progress charts", "text": "Weekly sets by muscle group, muscle balance, your streak and a trend for each lift." },
+        { "icon": "🏃", "title": "Strava posts", "text": "Get a ready-made Strava title and description in a serious, funny or neutral tone." }
+      ],
+      "changes": [
+        "History opens on a month calendar with monthly totals per muscle group; List view still available",
+        "New Progress tab: 12 weeks of sets stacked by muscle group, 4-week muscle balance with the most-due group, weekly streak, lift trends",
+        "Strava title and description per workout in Serious, Funny or Neutral tone, written automatically after each workout; copy title, description or both",
+        "Neutral Strava post works without an AI key"
+      ],
+      "fixes": [
+        "The AI review of a workout could be overwritten when the Strava post was saved right after it"
+      ]
+    },
+    {
+      "version": "1.2.0",
+      "date": "2026-10-26",
+      "title": "Meet your AI coach",
+      "highlights": [
+        { "icon": "✨", "title": "AI-built workouts", "text": "Pick muscles, equipment, time and intensity, and get a plan with weights from your history." },
+        { "icon": "🧠", "title": "Post-workout review", "text": "After each workout, see what went well, what to focus on next and how hard." },
+        { "icon": "🔐", "title": "Your own OpenAI key", "text": "Uses your OpenAI key, kept in the iPhone Keychain. Everything else works without it." }
+      ],
+      "changes": [
+        "AI workout builder using only exercises from your library, with sets, reps, rest, weights and form cues",
+        "Plan preview with warm-up and cool-down; Start this workout pre-fills every set and uses each exercise's rest time",
+        "Automatic AI review after Finish workout, saved with the workout in History",
+        "Disclaimer updated to cover AI suggestions and asked again once",
+        "One-line installer, like Reading Stars"
+      ],
+      "fixes": []
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-10-21",
+      "title": "Safer training, more equipment",
+      "highlights": [
+        { "icon": "🟢", "title": "Resistance bands", "text": "20 band exercises join the library, from pull-aparts to banded squats." },
+        { "icon": "🛡", "title": "Train-safe reminders", "text": "A short own-risk notice to accept once, and a safety tip on every exercise." },
+        { "icon": "📸", "title": "Missing-photo hint", "text": "The app tells you when some exercises still need their photos downloaded." }
+      ],
+      "changes": [
+        "Resistance bands added to the default equipment",
+        "Own-risk disclaimer to accept on first launch, always available from the Train screen",
+        "Safety note under each exercise's steps",
+        "Hint on the Train screen when exercises are missing photos"
+      ],
+      "fixes": []
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-10-20",
+      "title": "Your home gym coach",
+      "highlights": [
+        { "icon": "🏋️", "title": "Pick by muscle", "text": "Tap the plates for the muscles you want and get exercises you can do at home." },
+        { "icon": "🖼", "title": "See it done", "text": "Start-to-end photo demos and step-by-step instructions for 446 exercises." },
+        { "icon": "⏱", "title": "Log every set", "text": "Weights and reps prefilled from last time, with a rest timer after each set." }
+      ],
+      "changes": [
+        "Offline exercise library from free-exercise-db for bodyweight, dumbbell and barbell",
+        "Workout logging with rest timer, history, CSV export and iCloud backup",
+        "Home Screen widget with your last workout and weekly count",
+        "Compact header with a credit to the 7AM Club community"
+      ],
+      "fixes": []
+    }
+  ]
+}

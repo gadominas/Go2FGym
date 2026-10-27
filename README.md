@@ -14,7 +14,7 @@ Runs in [Scriptable](https://scriptable.app) and works fully offline.
    ```
 3. Tap **Open now**, accept the disclaimer, and tap **Download library** on Wi-Fi (about 36 MB, once). After that it works offline.
 
-- **Update:** run the same little script again. Workouts, history and the library are kept.
+- **Update:** from 1.5.0 on, the app offers new versions itself, so just tap **Update now**. On older copies, run the same little script again. Workouts, history and the library are always kept.
 - **Home Screen icon:** in Scriptable tap *⋯* on *Go2FGym* → *Add to Home Screen*.
 - **Manual install:** create a new script and paste the whole [`Go2FGym.js`](Go2FGym.js) instead.
 - Widget, extra equipment, backups and troubleshooting: **[install guide](docs/INSTALL.md)**.
@@ -84,6 +84,12 @@ The AI only chooses exercises from your library, keeps weights at or close to wh
 
 **What's sent to OpenAI:** exercise names and muscles, your sets, weights and dates, the options you chose and your note. No name, account or location. Requests are billed to your OpenAI account. Remove the key under **Train › AI key**.
 
+## Updates and what's new
+
+Go2FGym checks for a new version each time it opens. When there is one, a sheet shows its three best features with **Update now** and **Later** (asks again in two days). After updating, close the app and open it again. Your workouts and library are kept.
+
+Every version is listed in the **[changelog](CHANGELOG.md)**. The version you have is shown at the bottom of the Train screen. To turn the checks off, set `checkUpdates: false` in `CONFIG`.
+
 ## Using it
 
 | To… | Do this |
@@ -116,6 +122,7 @@ Settings live in the `CONFIG` block at the top of `Go2FGym.js`:
 | `equipment` | bodyweight, dumbbell, barbell, bands | Equipment you own. Also available: `kettlebells`, `e-z curl bar`, `medicine ball`, `exercise ball`, `foam roll`, `other` |
 | `skipCategories` | strongman, olympic weightlifting | Exercise types hidden from the library |
 | `icloudBackup` | `true` | Mirror history to iCloud Drive › Scriptable › Go2FGym-backup |
+| `checkUpdates` | `true` | Offer new versions from GitHub; **Later** waits two days |
 | `ai.model` | `"gpt-5.4-mini"` | OpenAI model for the AI coach |
 | `ai.reasoning` | `"low"` | `"low"` is quick; `"medium"` plans a bit more carefully but slower |
 | `ai.autoAnalyze` | `true` | Analyze each workout right after you finish it |

@@ -30,6 +30,7 @@ const CONFIG = {
   imageBase: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/",
   parallelDownloads: 6,
   icloudBackup: true, // mirror history.json to iCloud Drive/Scriptable/Go2FGym-backup
+  checkUpdates: true, // offer new versions from GitHub (asks again 2 days after "Later")
   ai: {
     // ✨ Optional AI coach via the OpenAI API (your own key, stored in the iOS Keychain).
     model: "gpt-5.4-mini",
@@ -39,6 +40,15 @@ const CONFIG = {
     stravaMode: "funny", // default tone for Strava posts: "serious", "funny" or "neutral"
   },
 };
+
+// ---------------------------------------------------------------- version
+// This build's version. When releasing, bump it and add a matching entry to releases.json.
+const VERSION = '1.5.0';
+const APP_ID = 'go2fgym';   // unique per app, never changes
+const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
+const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
+const UPDATE_SNOOZE_MS = 2 * 24 * 3600 * 1000;   // "Later" = 2 days
+const KC_UPDATE_SNOOZE = 'go2fgym-update-snooze';   // Keychain key, unique per app
 
 // ---------------------------------------------------------------- storage
 const fm = FileManager.local();
@@ -214,6 +224,86 @@ async function syncLibrary(report) {
   return meta;
 }
 
+// ---------------------------------------------------------------- in-app updates
+// Compares "1.10.0" and "1.9.2" as numbers: returns 1, 0 or -1.
+function cmpVer(a, b) {
+  const pa = String(a).split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = String(b).split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+function updateSnoozed() {
+  try {
+    return Keychain.contains(KC_UPDATE_SNOOZE) && Date.now() < +Keychain.get(KC_UPDATE_SNOOZE);
+  } catch (e) {
+    return false;
+  }
+}
+function snoozeUpdate() {
+  Keychain.set(KC_UPDATE_SNOOZE, String(Date.now() + UPDATE_SNOOZE_MS));
+}
+function clearUpdateSnooze() {
+  if (Keychain.contains(KC_UPDATE_SNOOZE)) Keychain.remove(KC_UPDATE_SNOOZE);
+}
+
+// Never throws and never blocks: any failure just means no update is offered this time.
+async function checkForUpdate() {
+  if (!CONFIG.checkUpdates || updateSnoozed()) return null;
+  try {
+    const req = new Request(`${REPO_RAW}releases.json?t=${Date.now()}`);
+    req.timeoutInterval = 10;
+    const data = await req.loadJSON();
+    if (!data || !Array.isArray(data.releases)) return null;
+    const newer = data.releases
+      .filter((r) => r && r.version && cmpVer(r.version, VERSION) > 0)
+      .sort((x, y) => cmpVer(y.version, x.version));
+    if (!newer.length) return null;
+    // The newest release's highlights first, topped up from older versions the user skipped.
+    const highlights = [];
+    newer.forEach((r) => (r.highlights || []).forEach((h) => {
+      if (highlights.length < 3 && h && h.title) highlights.push(h);
+    }));
+    return {
+      current: VERSION, latest: newer[0].version, title: newer[0].title || "",
+      skipped: newer.length, highlights, script: data.script || SCRIPT_FILE,
+    };
+  } catch (e) {
+    console.log(`Update check skipped: ${e}`);
+    return null;
+  }
+}
+
+async function applyUpdate(info) {
+  const req = new Request(`${REPO_RAW}${encodeURI((info && info.script) || SCRIPT_FILE)}?t=${Date.now()}`);
+  req.timeoutInterval = 30;
+  const code = await req.loadString();
+  const okStatus = req.response && req.response.statusCode === 200;
+  const m = code && code.match(/const VERSION = '([^']+)'/);
+  // 1. A real script for THIS app, not an error page or another project's file
+  if (!okStatus || !m || !code.includes(`const APP_ID = '${APP_ID}'`)) {
+    throw new Error("The download didn't look right. Try again later.");
+  }
+  // 2. Actually newer: GitHub's cache can serve the old file for a few minutes after a release
+  if (cmpVer(m[1], VERSION) <= 0) {
+    throw new Error("GitHub is still serving the old version. Try again in a few minutes.");
+  }
+  // 3. Write it where the running script lives (iCloud or on the phone)
+  const path = module.filename;
+  let target = FileManager.local();
+  try {
+    const ic = FileManager.iCloud();
+    if (path.startsWith(ic.documentsDirectory())) target = ic;
+  } catch (e) {
+    /* iCloud off */
+  }
+  target.writeString(path, code);
+  return m[1]; // the version now installed
+}
+
 // ---------------------------------------------------------------- AI (OpenAI Responses API)
 // Generic proxy: the web UI builds the prompt and schema; the key never leaves Scriptable.
 async function openai(p) {
@@ -314,6 +404,7 @@ async function runApp() {
     ai: { hasKey: Keychain.contains(KC_AI_KEY), autoAnalyze: CONFIG.ai.autoAnalyze, autoStrava: CONFIG.ai.autoStrava, stravaMode: CONFIG.ai.stravaMode },
     meta: readJSON(P.meta, null),
     consent: readJSON(P.consent, null),
+    version: VERSION,
     cfg: { unit: CONFIG.unit, rest: CONFIG.restSeconds, equipment: CONFIG.equipment, disclaimerVersion: DISCLAIMER_VERSION },
   };
 
@@ -358,6 +449,24 @@ async function runApp() {
           Keychain.set(KC_AI_KEY, key);
           await js(`HG.onKey(${J({ ok: true })})`);
         }
+        break;
+      }
+      case "update-later":
+        snoozeUpdate();
+        pendingUpdate = null;
+        break;
+      case "update-now": {
+        let ok = false;
+        let msg = "";
+        try {
+          msg = await applyUpdate(pendingUpdate);
+          ok = true;
+          pendingUpdate = null;
+          clearUpdateSnooze();
+        } catch (e) {
+          msg = String((e && e.message) || e);
+        }
+        await js(`HG.onUpdateDone(${ok},${J(msg)})`);
         break;
       }
       case "copy":
@@ -438,12 +547,18 @@ async function runApp() {
     }
   }
 
+  let pendingUpdate = null;
   await wv.loadHTML(buildHTML(boot));
   let open = true;
   wv.present(true).then(
     () => (open = false),
     () => (open = false)
   );
+  // Once per run, after the first screen has rendered, so it never slows the start.
+  checkForUpdate().then((u) => {
+    pendingUpdate = u;
+    if (u && open) js(`HG.showUpdate(${J(u)})`);
+  });
   while (open) {
     await pump();
     await sleep(200);
@@ -1158,6 +1273,7 @@ function webApp() {
         ${missingPhotos() && !S.sync ? `<p class="small"><b>${plural(missingPhotos(), "exercise")} ${missingPhotos() === 1 ? "has" : "have"} no photos yet.</b> Tap Update library to download them.</p>` : ""}
         <div class="row">${S.sync ? "" : `<button class="link" data-a="sync">Update library</button>`}${S.ai.hasKey ? `<button class="link danger${S.armed === "delkey" ? " armed" : ""}" data-a="delkey">${S.armed === "delkey" ? "Tap to remove" : "AI key"}</button>` : ""}<button class="link danger" data-a="disclaimer">Disclaimer</button></div>
         ${S.sync ? syncProgress() : ""}
+        <p class="ver">Go2FGym v${esc(BOOT.version || "")}</p>
       </footer>`;
   }
 
@@ -1517,6 +1633,44 @@ function webApp() {
     }
   }
 
+  // ------------------------------------------------ update sheet
+  function showUpdateSheet() {
+    const u = S.update;
+    if (!u || !S.consent || $("#upd")) return;
+    const ov = document.createElement("div");
+    ov.id = "upd";
+    const cards = (u.highlights || []).slice(0, 3).map((h) => `<div class="updi"><span class="updic">${esc(h.icon || "✨")}</span>
+      <div><b>${esc(h.title)}</b><span>${esc(h.text || "")}</span></div></div>`).join("");
+    const more = u.skipped > 1 ? ` (and ${u.skipped - 1} more update${u.skipped > 2 ? "s" : ""})` : "";
+    ov.innerHTML = `<div class="updp" role="dialog" aria-modal="true" aria-label="Update available">
+      <div class="updtag">New version ${esc(u.latest)}</div>
+      <h2 class="updt">${esc(u.title || "An update is ready")}</h2>
+      <div class="upds">You have ${esc(u.current)}${esc(more)}. Here’s what you get:</div>
+      <div class="updl">${cards}</div>
+      <div class="updmsg" aria-live="polite"></div>
+      <button class="updgo" data-a="upd-now">Update now</button>
+      <button class="updlater" data-a="upd-later">Later, remind me in 2 days</button></div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener("click", (e) => { if (e.target === ov) updLater(); }); // outside = Later
+  }
+  function updLater() {
+    const ov = $("#upd");
+    if (!ov) return;
+    ov.remove();
+    S.update = null;
+    send("update-later", {});
+  }
+  function updNow(btn) {
+    const ov = $("#upd");
+    const msg = ov.querySelector(".updmsg");
+    const later = ov.querySelector(".updlater");
+    btn.disabled = true;
+    btn.textContent = "Updating…";
+    later.hidden = true;
+    msg.textContent = "";
+    send("update-now", {});
+  }
+
   // ------------------------------------------------ Strava post
   const STRAVA_MODES = [
     { key: "serious", label: "Serious" },
@@ -1705,11 +1859,15 @@ function webApp() {
       send("setkey", { key });
     },
     delkey: () => arm("delkey", () => { send("delkey", {}); }),
+    "upd-now": (v, t) => updNow(t),
+    "upd-later": () => updLater(),
+    "upd-close": () => { const uo = $("#upd"); if (uo) uo.remove(); },
     accept: () => {
       S.consent = true;
       S.acceptedAt = new Date().toISOString();
       send("accept", { version: CFG.disclaimerVersion });
       render();
+      showUpdateSheet();
     },
     disclaimer: () => { S.showDisclaimer = true; render(); },
     "close-disclaimer": () => { S.showDisclaimer = false; render(); },
@@ -1893,6 +2051,31 @@ function webApp() {
       } else if (out.error) toast(`AI coach: ${out.error}`, true);
       if (done) done(out.data || null);
     },
+    showUpdate(u) {
+      if (!u || !u.latest) return;
+      S.update = u;
+      showUpdateSheet(); // waits for the disclaimer to be accepted on a first launch
+    },
+    onUpdateDone(ok, res) {
+      const ov = $("#upd");
+      if (!ov) return;
+      const btn = ov.querySelector(".updgo");
+      const msg = ov.querySelector(".updmsg");
+      const later = ov.querySelector(".updlater");
+      if (ok) {
+        S.update = null;
+        ov.querySelector(".updtag").textContent = `Updated to ${res}`;
+        msg.innerHTML = "<b>✓ Done.</b> Close the app and open it again to start using the new version.";
+        btn.disabled = false;
+        btn.textContent = "Got it";
+        btn.dataset.a = "upd-close";
+      } else {
+        msg.textContent = res || "Update failed";
+        btn.disabled = false;
+        btn.textContent = "Try again";
+        later.hidden = false;
+      }
+    },
     onKey(r) {
       if (r.ok && r.removed) { S.ai.hasKey = false; toast("AI key removed"); }
       else if (r.ok) { S.ai.hasKey = true; toast("Key saved. Your AI coach is ready."); }
@@ -2016,6 +2199,23 @@ p{margin:0 0 10px}
 .spark polyline{fill:none;stroke:var(--accent);stroke-width:2.5;vector-effect:non-scaling-stroke}
 .spark circle{fill:var(--accent)}
 .cta{margin-top:18px}
+.ver{font-size:12px;color:var(--muted);margin:14px 0 0;opacity:.8}
+#upd{position:fixed;inset:0;z-index:48;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}
+.updp{width:100%;max-width:640px;background:var(--surface);color:var(--ink);border-radius:22px 22px 0 0;padding:20px 18px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;
+  box-shadow:0 -8px 30px rgba(0,0,0,.25)}
+.updtag{align-self:flex-start;background:var(--accent);color:#fff;font-size:12px;font-weight:800;padding:4px 10px;border-radius:999px}
+.updt{margin:6px 0 0;font:800 26px/1.1 var(--display)}
+.upds{color:var(--muted);font-size:14px}
+.updl{display:flex;flex-direction:column;gap:10px;margin:8px 0 6px}
+.updi{display:flex;gap:12px;align-items:flex-start;background:var(--bg);border-radius:14px;padding:12px}
+.updic{font-size:24px;line-height:1.1;flex:none}
+.updi b{display:block;font-size:15px}
+.updi span{display:block;color:var(--muted);font-size:13px;line-height:1.35;margin-top:2px}
+.updmsg{font-size:14px}.updmsg:empty{display:none}
+.updgo{padding:14px;border-radius:12px;background:var(--accent);color:#fff;font:700 19px/1 var(--display);text-align:center}
+.updgo:disabled{opacity:.6}
+.updlater{padding:12px;border-radius:12px;background:var(--bg);color:var(--ink);font-weight:600;text-align:center}
+.updlater[hidden]{display:none}
 .chips.wrap{flex-wrap:wrap;overflow:visible;margin:0 0 6px;padding:2px 0}
 .seg4{grid-template-columns:repeat(4,1fr)}
 .seg2{grid-template-columns:repeat(2,1fr)}

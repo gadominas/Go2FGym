@@ -69,7 +69,9 @@ To change the model or switch off the automatic analysis after each workout, edi
 
 ## Updating
 
-Run the one-line installer script again and tap **Update**. Your history and downloaded library are kept, because they live in a separate folder from the script.
+From version 1.5.0, Go2FGym checks GitHub each time it opens. When a newer version exists, a sheet shows what's new: tap **Update now**, then close and reopen the app. **Later** hides the offer for two days. Turn the checks off with `checkUpdates: false` in `CONFIG`. What changed in each version is in the [changelog](../CHANGELOG.md).
+
+On a copy older than 1.5.0, or to reinstall, run the one-line installer script again and tap **Update**. Your history and downloaded library are kept, because they live in a separate folder from the script.
 
 If you installed manually, replace the script's contents with the new `Go2FGym.js`. Any changes you made to `CONFIG` need to be made again.
 
