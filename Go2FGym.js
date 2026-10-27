@@ -459,6 +459,7 @@ function buildHTML(boot) {
 <body><main id="app"></main>
 <div id="rest" hidden><div class="rest-fill"></div><span class="rest-label">Rest</span><span class="rest-time">0:00</span>
 <button data-a="rest-add">+30 s</button><button data-a="rest-skip">Skip</button></div>
+<div id="sat"></div><button id="last" data-a="last" hidden></button>
 <div id="toast" role="status" aria-live="polite"></div><nav id="tabs"></nav>
 <script>window.__BOOT=${data};(${webApp.toString()})();</script></body></html>`;
 }
@@ -986,7 +987,8 @@ function webApp() {
     const b = S.builder;
     const busy = S.aiBusy === "plan";
     const bchip = (v, on, label) => `<button class="chip" data-a="b-chip" data-v="${esc(v)}" aria-pressed="${on}">${esc(label)}</button>`;
-    return `<header class="bar"><button class="back" data-a="home">‹ Muscles</button></header>
+    return `<header class="bar"><button class="back" data-a="home">‹ Muscles</button>
+        <button class="hbtn${busy ? " busy" : ""}" data-a="build" ${busy || !S.ai.hasKey || !b.equipment.length ? "disabled" : ""}>${busy ? "Building…" : "Build workout"}</button></header>
       <h1 class="title">Build my workout</h1>
       <p class="lead">Tell the AI coach what you want. It picks exercises from your library, sets weights from your history and fits it all into your time.</p>
       <h2>What to train</h2>
@@ -1000,8 +1002,7 @@ function webApp() {
       <h2>Anything else?</h2>
       <textarea class="search" data-in="b-note" rows="2" placeholder="Optional, e.g. lower back is a bit sore, or I want to get better at bench press">${esc(b.note)}</textarea>
       ${S.ai.hasKey ? "" : keyBox()}
-      <button class="primary${busy ? " busy" : ""}" data-a="build" ${busy || !S.ai.hasKey || !b.equipment.length ? "disabled" : ""}>${busy ? "Building your workout…" : "Build workout"}</button>
-      <p class="muted small">AI suggestions can be wrong. Check every weight before you lift it.</p>`;
+      <p class="muted small">${busy ? "<b>Building your workout…</b> " : ""}${S.ai.hasKey ? "Tap <b>Build workout</b> at the top when you're ready. " : "Save your key above to enable <b>Build workout</b>. "}AI suggestions can be wrong. Check every weight before you lift it.</p>`;
   }
 
   function renderPlan() {
@@ -1048,7 +1049,6 @@ function webApp() {
       ${focus ? `<h3>Focus next</h3>${focus}` : ""}
       ${a.recovery ? `<h3>Recovery</h3><p>${esc(a.recovery)}</p>` : ""}
       ${a.next.idea ? `<h3>Next workout${a.next.when ? `: ${esc(a.next.when)}` : ""}</h3><p>${nextLabels ? `<b>${esc(nextLabels)}.</b> ` : ""}${esc(a.next.idea)}</p>` : ""}
-      ${a.next.groups.length ? `<button class="primary" data-a="build-next" data-v="${esc(s.id)}">✨ Build this next workout</button>` : ""}
       <button class="link small" data-a="reanalyze" data-v="${esc(s.id)}" ${S.aiBusy ? "disabled" : ""}>${busy ? "Analyzing…" : "Analyze again"}</button>
     </div>`;
   }
@@ -1311,7 +1311,7 @@ function webApp() {
 
   function renderHistory() {
     const ss = sessionsDesc();
-    const head = `<header class="bar"><h1 class="title">History</h1>${ss.length ? `<button class="link" data-a="export">Export CSV</button>` : ""}</header>`;
+    const head = `<header class="bar"><h1 class="title">History</h1>${ss.length ? nextButton() : ""}</header>`;
     if (!ss.length) return head + `<div class="empty"><p>Finished workouts show up here, with every set you logged.</p></div>`;
     const monday = new Date();
     monday.setHours(0, 0, 0, 0);
@@ -1323,7 +1323,8 @@ function webApp() {
       : "No workouts yet this week.";
     const seg = `<div class="seg seg2"><button data-a="hist-view" data-v="calendar" aria-pressed="${S.histView === "calendar"}">Calendar</button>
       <button data-a="hist-view" data-v="list" aria-pressed="${S.histView === "list"}">List</button></div>`;
-    return head + `<p class="lead">${esc(summary)}</p>` + seg + (S.histView === "calendar" ? renderCalendar(ss) : ss.map((s) => sessCard(s)).join(""));
+    return head + `<p class="lead">${esc(summary)}</p>` + seg + (S.histView === "calendar" ? renderCalendar(ss) : ss.map((s) => sessCard(s)).join("")) +
+      `<button class="link" data-a="export">Export CSV</button>`;
   }
 
   function weekStart(d) {
@@ -1334,7 +1335,7 @@ function webApp() {
   }
   function renderProgress() {
     const asc = [...S.history.sessions].sort((a, b) => a.start.localeCompare(b.start));
-    const head = `<header class="bar"><h1 class="title">Progress</h1></header>`;
+    const head = `<header class="bar"><h1 class="title">Progress</h1>${asc.length ? nextButton() : ""}</header>`;
     if (!asc.length) return head + `<div class="empty"><p>Log a few workouts and your trends show up here: weekly volume by muscle group, balance, and your best lifts.</p></div>`;
     // weekly sets stacked by muscle group, last 12 weeks
     const thisWeek = weekStart(new Date());
@@ -1412,8 +1413,48 @@ function webApp() {
       <h2>Muscle balance, last 4 weeks</h2>
       <p class="muted small">Working sets per muscle group, and days since you last trained it. Most due: <b>${dueG.label}</b>.</p>
       <div class="balance">${balance}</div>
-      ${top.length ? `<h2>Your lifts</h2><p class="muted small">Best set per workout as an estimated one-rep max (reps for bodyweight moves). Tap one for details.</p><div class="lifts">${liftRows}</div>` : ""}
-      <button class="secondary ai" data-a="build-due" data-v="${dueG.key}">✨ Build a ${dueG.label.toLowerCase()} workout</button>`;
+      ${top.length ? `<h2>Your lifts</h2><p class="muted small">Best set per workout as an estimated one-rep max (reps for bodyweight moves). Tap one for details.</p><div class="lifts">${liftRows}</div>` : ""}`;
+  }
+
+  // ------------------------------------------------ next workout + last-workout pill
+  function nextSuggestion() {
+    const latest = sessionsDesc()[0];
+    if (latest && latest.ai && latest.ai.next && latest.ai.next.groups.length) {
+      const f = latest.ai.focus_next.find((x) => latest.ai.next.groups.includes(x.group));
+      return { groups: latest.ai.next.groups, intensity: f ? (f.intensity === "light" ? "easy" : f.intensity) : null, why: "your AI coach's suggestion" };
+    }
+    const due = groupStats(28).sort((a, b) => (b.days_since_trained ?? 99) - (a.days_since_trained ?? 99)).slice(0, 2).map((x) => x.group);
+    return { groups: due, intensity: null, why: "your most-due muscle groups" };
+  }
+  function nextButton() {
+    const n = nextSuggestion();
+    const labels = n.groups.map((k) => GROUPS.find((g) => g.key === k).label).join(" + ");
+    return `<button class="hbtn" data-a="build-next-h" aria-label="Build next workout: ${esc(labels)}, based on ${esc(n.why)}">✨ Build next</button>`;
+  }
+  function relDay(iso) {
+    const a = new Date(iso); a.setHours(0, 0, 0, 0);
+    const b = new Date(); b.setHours(0, 0, 0, 0);
+    const d = Math.round((b - a) / 864e5);
+    if (d === 0) return "Today";
+    if (d === 1) return "Yesterday";
+    if (d < 7) return a.toLocaleDateString(undefined, { weekday: "short" });
+    return a.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  }
+  function updateLast() {
+    const el = $("#last");
+    const s = S.consent ? sessionsDesc()[0] : null;
+    if (!s) { el.hidden = true; return; }
+    const gs = sessionGroups(s);
+    const mins = s.end ? minutesBetween(s.start, s.end) : null;
+    el.innerHTML = `<span class="last-k">Last</span>${esc(relDay(s.start))}<span class="dots">${dotsFor(gs)}</span>${gs.length ? `${plural(gs.length, "group")}: ${esc(gs.map((g) => g.label).join(", "))}` : plural(s.entries.length, "exercise")}${mins ? `, ${mins} min` : ""}`;
+    el.setAttribute("aria-label", `Last workout ${relDay(s.start)}: ${gs.map((g) => g.label).join(", ")}${mins ? `, ${mins} minutes` : ""}. Opens it in History.`);
+    el.dataset.v = s.start;
+    el.hidden = false;
+  }
+  function layoutBand() {
+    const probe = $("#sat");
+    const inset = probe ? probe.offsetHeight : 0;
+    document.documentElement.style.setProperty("--band", `${Math.max(inset, 40)}px`);
   }
 
   // ------------------------------------------------ Strava post
@@ -1532,6 +1573,7 @@ function webApp() {
       : S.tab === "workout" ? renderWorkout() : S.tab === "progress" ? renderProgress() : renderHistory();
     if (S.consent) renderTabs();
     else $tabs.innerHTML = "";
+    updateLast();
     window.scrollTo(0, same ? y : key.startsWith("detail:") ? 0 : S.scroll[key] || 0);
     currentKey = key;
     if (S.detailId) want(S.detailId);
@@ -1684,7 +1726,12 @@ function webApp() {
     "cal-day": (v) => { S.cal.sel = S.cal.sel === v ? null : v; render(); },
     "cal-prev": () => { const d = new Date(S.cal.y, S.cal.m - 1, 1); S.cal = { y: d.getFullYear(), m: d.getMonth(), sel: null }; render(); },
     "cal-next": () => { const d = new Date(S.cal.y, S.cal.m + 1, 1); S.cal = { y: d.getFullYear(), m: d.getMonth(), sel: null }; render(); },
-    "build-due": (v) => openBuilder([v]),
+    "build-next-h": () => {
+      const n = nextSuggestion();
+      if (n.intensity) S.builder.intensity = n.intensity;
+      openBuilder(n.groups);
+    },
+    last: (v) => { focusDay(v); S.detailId = null; S.showDisclaimer = false; S.tab = "history"; render(); },
     "st-mode": (v) => {
       const [id, mode] = v.split("|");
       S.stravaMode[id] = mode;
@@ -1805,6 +1852,8 @@ function webApp() {
     setTimeout(() => toast("Unfinished workout restored"), 300);
   } else S.session = null;
   render();
+  layoutBand();
+  window.addEventListener("resize", layoutBand);
   setInterval(tick, 250);
 }
 
@@ -1823,8 +1872,17 @@ const CSS = `
 }}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);-webkit-text-size-adjust:100%}
-body{padding:env(safe-area-inset-top,0px) 0 calc(150px + env(safe-area-inset-bottom,0px))}
-body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:10}
+body{padding:var(--band,env(safe-area-inset-top,0px)) 0 calc(150px + env(safe-area-inset-bottom,0px))}
+body::before{content:"";position:fixed;inset:0 0 auto;height:var(--band,env(safe-area-inset-top,0px));background:var(--bg);z-index:10}
+#sat{position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none}
+#last{position:fixed;z-index:12;left:50%;top:calc(var(--band,40px) / 2 - 13px);transform:translateX(-50%);display:flex;align-items:center;gap:6px;
+  height:26px;max-width:calc(100vw - 24px);padding:0 12px;border-radius:999px;background:var(--surface);border:1px solid var(--line);
+  font:500 12.5px/1 var(--body);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#last[hidden]{display:none}
+#last .last-k{font-weight:800;color:var(--accent);text-transform:uppercase;font-size:10.5px;letter-spacing:.05em}
+#last .dots{gap:3px}#last .dot{width:8px;height:8px}
+.hbtn{flex:none;background:var(--accent);color:var(--accent-ink);font:700 15px/1 var(--body);padding:9px 14px;border-radius:999px;white-space:nowrap;text-align:center}
+.hbtn:disabled{opacity:.4}
 #app{max-width:640px;margin:0 auto;padding:0 16px 32px}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:inherit}
 button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -1840,7 +1898,7 @@ p{margin:0 0 10px}
 .club span{color:var(--accent);font-weight:700}
 .title{font:800 32px/1.02 var(--display);margin:6px 0 12px;letter-spacing:-.01em}
 .lead{color:var(--muted);margin-bottom:16px}
-.bar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;position:sticky;top:var(--band,env(safe-area-inset-top,0px));background:var(--bg);z-index:5}
 .bar .title{margin:10px 0}
 .back{font-weight:600;color:var(--accent);padding:10px 0}
 .link{color:var(--accent);font-weight:600;padding:10px 0}
@@ -2004,9 +2062,10 @@ textarea.search{resize:none;line-height:1.4}
 .rest-time{font:800 28px/1 var(--display);font-variant-numeric:tabular-nums;margin-right:auto;min-width:3ch}
 #rest button{font-weight:700;font-size:15px;padding:6px 0;position:relative}
 #rest.go{background:var(--done);color:#fff}
-#toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 10px);transform:translate(-50%,-150%);max-width:88vw;padding:10px 16px;border-radius:10px;
-  background:var(--ink);color:var(--bg);font-size:15px;font-weight:600;z-index:30;transition:transform .25s ease;pointer-events:none;text-align:center}
-#toast.show{transform:translate(-50%,0)}#toast.err{background:var(--accent);color:#fff}
+#toast{position:fixed;left:50%;top:calc(var(--band,40px) / 2 - 17px);transform:translate(-50%,-8px);max-width:88vw;padding:8px 16px;border-radius:12px;
+  background:var(--ink);color:var(--bg);font-size:15px;font-weight:600;z-index:30;pointer-events:none;text-align:center;
+  opacity:0;visibility:hidden;transition:opacity .2s ease,transform .2s ease,visibility .2s}
+#toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}#toast.err{background:var(--accent);color:#fff}
 #tabs{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface);border-top:1px solid var(--line);
   padding-bottom:env(safe-area-inset-bottom,0px);z-index:20}
 #tabs button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 0 10px;font:600 12px var(--body);color:var(--muted)}
