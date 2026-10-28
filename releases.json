@@ -4,13 +4,58 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.6.0",
+      "date": "2026-10-28",
+      "title": "Your AI coach, Claude or OpenAI",
+      "highlights": [
+        {
+          "icon": "🤖",
+          "title": "Claude or OpenAI",
+          "text": "Workout plans, reviews and Strava posts now work with either provider. Switch any time in AI settings."
+        },
+        {
+          "icon": "🧠",
+          "title": "Pick any model",
+          "text": "Load the models your own key can use, choose one and test the connection."
+        },
+        {
+          "icon": "📊",
+          "title": "See your token usage",
+          "text": "Tokens per day, feature and model, so you always know what AI costs you."
+        }
+      ],
+      "changes": [
+        "New AI settings sheet (Train tab › AI settings): Claude and OpenAI keys, model picker loaded from your key, connection test, token usage per day, feature and model",
+        "Keys are entered in a native secure prompt and stored in the iOS Keychain; the page only ever sees them masked",
+        "Every AI coach request goes through one shared AI call, following the app-blueprints AI configuration",
+        "One switch under What AI does turns the after-workout review and Strava post on or off",
+        "Without a key, AI-only buttons are hidden and the Strava post offers the Neutral template, labelled “Template — no AI”",
+        "Workout plans, reviews and Strava posts are labelled with the provider that wrote them",
+        "Your existing OpenAI key moves over automatically",
+        "The thinking-effort setting is gone: choose a model instead"
+      ],
+      "fixes": []
+    },
+    {
       "version": "1.5.0",
       "date": "2026-10-27",
       "title": "Never miss an update",
       "highlights": [
-        { "icon": "🔔", "title": "Update reminders", "text": "The app tells you when a new version is out, and waits two days if you tap Later." },
-        { "icon": "⬆️", "title": "One-tap update", "text": "Update right from the app. No need to run the installer again." },
-        { "icon": "✨", "title": "See what's new first", "text": "Every update shows its three best features before you install it." }
+        {
+          "icon": "🔔",
+          "title": "Update reminders",
+          "text": "The app tells you when a new version is out, and waits two days if you tap Later."
+        },
+        {
+          "icon": "⬆️",
+          "title": "One-tap update",
+          "text": "Update right from the app. No need to run the installer again."
+        },
+        {
+          "icon": "✨",
+          "title": "See what's new first",
+          "text": "Every update shows its three best features before you install it."
+        }
       ],
       "changes": [
         "Update check on start, with an update sheet showing the release's three highlights",
@@ -27,9 +72,21 @@
       "date": "2026-10-27",
       "title": "Your next workout in one tap",
       "highlights": [
-        { "icon": "⚡", "title": "Instant next workout", "text": "Build next creates a plan straight from your history, no form to fill in." },
-        { "icon": "🕒", "title": "Last workout at a glance", "text": "A small chip at the top shows when you last trained, which muscles and how long." },
-        { "icon": "👆", "title": "Buttons where you need them", "text": "Build workout and Build next now sit in the header of their screens." }
+        {
+          "icon": "⚡",
+          "title": "Instant next workout",
+          "text": "Build next creates a plan straight from your history, no form to fill in."
+        },
+        {
+          "icon": "🕒",
+          "title": "Last workout at a glance",
+          "text": "A small chip at the top shows when you last trained, which muscles and how long."
+        },
+        {
+          "icon": "👆",
+          "title": "Buttons where you need them",
+          "text": "Build workout and Build next now sit in the header of their screens."
+        }
       ],
       "changes": [
         "Build next in History and Progress builds the plan immediately from the coach's suggestion or your most-due muscle groups, your usual workout length and all your equipment",
@@ -48,9 +105,21 @@
       "date": "2026-10-26",
       "title": "See your progress",
       "highlights": [
-        { "icon": "🗓", "title": "Training calendar", "text": "See every workout on a month calendar, with dots for the muscle groups trained." },
-        { "icon": "📈", "title": "Progress charts", "text": "Weekly sets by muscle group, muscle balance, your streak and a trend for each lift." },
-        { "icon": "🏃", "title": "Strava posts", "text": "Get a ready-made Strava title and description in a serious, funny or neutral tone." }
+        {
+          "icon": "🗓",
+          "title": "Training calendar",
+          "text": "See every workout on a month calendar, with dots for the muscle groups trained."
+        },
+        {
+          "icon": "📈",
+          "title": "Progress charts",
+          "text": "Weekly sets by muscle group, muscle balance, your streak and a trend for each lift."
+        },
+        {
+          "icon": "🏃",
+          "title": "Strava posts",
+          "text": "Get a ready-made Strava title and description in a serious, funny or neutral tone."
+        }
       ],
       "changes": [
         "History opens on a month calendar with monthly totals per muscle group; List view still available",
@@ -67,9 +136,21 @@
       "date": "2026-10-26",
       "title": "Meet your AI coach",
       "highlights": [
-        { "icon": "✨", "title": "AI-built workouts", "text": "Pick muscles, equipment, time and intensity, and get a plan with weights from your history." },
-        { "icon": "🧠", "title": "Post-workout review", "text": "After each workout, see what went well, what to focus on next and how hard." },
-        { "icon": "🔐", "title": "Your own OpenAI key", "text": "Uses your OpenAI key, kept in the iPhone Keychain. Everything else works without it." }
+        {
+          "icon": "✨",
+          "title": "AI-built workouts",
+          "text": "Pick muscles, equipment, time and intensity, and get a plan with weights from your history."
+        },
+        {
+          "icon": "🧠",
+          "title": "Post-workout review",
+          "text": "After each workout, see what went well, what to focus on next and how hard."
+        },
+        {
+          "icon": "🔐",
+          "title": "Your own OpenAI key",
+          "text": "Uses your OpenAI key, kept in the iPhone Keychain. Everything else works without it."
+        }
       ],
       "changes": [
         "AI workout builder using only exercises from your library, with sets, reps, rest, weights and form cues",
@@ -85,9 +166,21 @@
       "date": "2026-10-21",
       "title": "Safer training, more equipment",
       "highlights": [
-        { "icon": "🟢", "title": "Resistance bands", "text": "20 band exercises join the library, from pull-aparts to banded squats." },
-        { "icon": "🛡", "title": "Train-safe reminders", "text": "A short own-risk notice to accept once, and a safety tip on every exercise." },
-        { "icon": "📸", "title": "Missing-photo hint", "text": "The app tells you when some exercises still need their photos downloaded." }
+        {
+          "icon": "🟢",
+          "title": "Resistance bands",
+          "text": "20 band exercises join the library, from pull-aparts to banded squats."
+        },
+        {
+          "icon": "🛡",
+          "title": "Train-safe reminders",
+          "text": "A short own-risk notice to accept once, and a safety tip on every exercise."
+        },
+        {
+          "icon": "📸",
+          "title": "Missing-photo hint",
+          "text": "The app tells you when some exercises still need their photos downloaded."
+        }
       ],
       "changes": [
         "Resistance bands added to the default equipment",
@@ -102,9 +195,21 @@
       "date": "2026-10-20",
       "title": "Your home gym coach",
       "highlights": [
-        { "icon": "🏋️", "title": "Pick by muscle", "text": "Tap the plates for the muscles you want and get exercises you can do at home." },
-        { "icon": "🖼", "title": "See it done", "text": "Start-to-end photo demos and step-by-step instructions for 446 exercises." },
-        { "icon": "⏱", "title": "Log every set", "text": "Weights and reps prefilled from last time, with a rest timer after each set." }
+        {
+          "icon": "🏋️",
+          "title": "Pick by muscle",
+          "text": "Tap the plates for the muscles you want and get exercises you can do at home."
+        },
+        {
+          "icon": "🖼",
+          "title": "See it done",
+          "text": "Start-to-end photo demos and step-by-step instructions for 446 exercises."
+        },
+        {
+          "icon": "⏱",
+          "title": "Log every set",
+          "text": "Weights and reps prefilled from last time, with a rest timer after each set."
+        }
       ],
       "changes": [
         "Offline exercise library from free-exercise-db for bodyweight, dumbbell and barbell",

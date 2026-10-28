@@ -2,6 +2,23 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.6.0 (2026-10-28): Your AI coach, Claude or OpenAI
+
+- 🤖 **Claude or OpenAI**: Workout plans, reviews and Strava posts now work with either provider. Switch any time in AI settings.
+- 🧠 **Pick any model**: Load the models your own key can use, choose one and test the connection.
+- 📊 **See your token usage**: Tokens per day, feature and model, so you always know what AI costs you.
+
+**Changes**
+
+- New AI settings sheet (Train tab › AI settings): Claude and OpenAI keys, model picker loaded from your key, connection test, token usage per day, feature and model
+- Keys are entered in a native secure prompt and stored in the iOS Keychain; the page only ever sees them masked
+- Every AI coach request goes through one shared AI call, following the app-blueprints AI configuration
+- One switch under What AI does turns the after-workout review and Strava post on or off
+- Without a key, AI-only buttons are hidden and the Strava post offers the Neutral template, labelled “Template — no AI”
+- Workout plans, reviews and Strava posts are labelled with the provider that wrote them
+- Your existing OpenAI key moves over automatically
+- The thinking-effort setting is gone: choose a model instead
+
 ## 1.5.0 (2026-10-27): Never miss an update
 
 - 🔔 **Update reminders**: The app tells you when a new version is out, and waits two days if you tap Later.
