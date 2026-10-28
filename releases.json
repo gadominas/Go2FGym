@@ -4,6 +4,40 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.7.0",
+      "date": "2026-10-28",
+      "title": "Settings, your way",
+      "highlights": [
+        {
+          "icon": "🎛",
+          "title": "A real Settings screen",
+          "text": "Equipment, kg or lb, rest timer, backup and AI coach in one place, behind the sliders icon."
+        },
+        {
+          "icon": "🎨",
+          "title": "Colours and layout",
+          "text": "Six palettes or Auto, plus Compact and a one-line Tiny layout for long lists."
+        },
+        {
+          "icon": "🔠",
+          "title": "Text size and font",
+          "text": "Pick Small to Larger text and the condensed or a serif headline font."
+        }
+      ],
+      "changes": [
+        "New Settings sheet (sliders icon on the Train tab): Appearance, Workout, Library, History, AI coach, Updates, Timing, Downloads and Built with; changes apply at once, nothing to edit in the code",
+        "Appearance shared with the other apps: Auto plus six palettes (Go2FGym red in all), Comfortable, Compact or Tiny layout, four text sizes, condensed or serif headlines",
+        "Tiny layout: one line per exercise without photos and one line per workout in History; logging sets stays full size",
+        "Equipment and exercise types are switches; the library updates when you close Settings, and Update library fetches photos for new equipment",
+        "Rest timer and photo downloads are adjustable with ranges and Reset",
+        "Check for updates now, in Settings › Updates",
+        "Settings are saved in settings.json in iCloud Drive › Scriptable › Go2FGym, so updates no longer undo your changes",
+        "AI settings moved from the Train tab footer into Settings › AI coach",
+        "Built with: the blueprints this app follows, with links to read them"
+      ],
+      "fixes": []
+    },
+    {
       "version": "1.6.0",
       "date": "2026-10-28",
       "title": "Your AI coach, Claude or OpenAI",
