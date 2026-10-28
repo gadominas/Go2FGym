@@ -74,7 +74,7 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
 Uses Claude or OpenAI with **your own API key**. Everything else in the app works without it, and the AI buttons stay hidden until you add a key.
 
 1. Create a key at [console.anthropic.com](https://console.anthropic.com/settings/keys) (Claude) or [platform.openai.com](https://platform.openai.com/api-keys) (OpenAI).
-2. In Go2FGym tap **AI settings** at the bottom of the Train tab, then **Add key**. The key is typed into a native iOS prompt, stored in the iPhone's Keychain and only sent to its own provider. Here you can also pick any model your key can use, test the connection, and see your token usage per day, feature and model.
+2. In Go2FGym tap the **sliders icon** on the Train tab, then **AI settings › Add key**. The key is typed into a native iOS prompt, stored in the iPhone's Keychain and only sent to its own provider. Here you can also pick any model your key can use, test the connection, and see your token usage per day, feature and model.
 3. Pick what to train, your equipment, 20 to 60 minutes and Easy, Moderate or Hard, add a note if you like ("lower back is sore"), and tap **Build workout**.
 4. Check the plan, then **Start this workout**. After **Finish workout** the AI coach reviews it and writes a Strava title and description. Both are saved with the workout in **History**.
 
@@ -90,7 +90,7 @@ This app follows the shared [app blueprints](https://github.com/gadominas/app-bl
 
 Go2FGym checks for a new version each time it opens. When there is one, a sheet shows its three best features with **Update now** and **Later** (asks again in two days). After updating, close the app and open it again. Your workouts and library are kept.
 
-Every version is listed in the **[changelog](CHANGELOG.md)**. The version you have is shown at the bottom of the Train screen. To turn the checks off, set `checkUpdates: false` in `CONFIG`.
+Every version is listed in the **[changelog](CHANGELOG.md)**. The version you have is shown at the bottom of the Train screen. To turn the checks off, switch off **Settings › Updates › Offer new versions**.
 
 ## Using it
 
@@ -113,23 +113,20 @@ Every version is listed in the **[changelog](CHANGELOG.md)**. The version you ha
 | Export | **History › Export CSV** |
 | Get new exercises or missing photos | **Train › Update library** |
 
-## Configuration
+## Settings
 
-Settings live in the `CONFIG` block at the top of `Go2FGym.js`:
+Tap the **sliders icon** at the top of the Train tab. Changes apply right away (no Save) and are kept in iCloud Drive › Scriptable › Go2FGym › `settings.json`; your workouts and library stay where they were.
 
-| Setting | Default | What it does |
-|---|---|---|
-| `unit` | `"kg"` | Weight unit shown and exported |
-| `restSeconds` | `90` | Rest timer length |
-| `equipment` | bodyweight, dumbbell, barbell, bands | Equipment you own. Also available: `kettlebells`, `e-z curl bar`, `medicine ball`, `exercise ball`, `foam roll`, `other` |
-| `skipCategories` | strongman, olympic weightlifting | Exercise types hidden from the library |
-| `icloudBackup` | `true` | Mirror history to iCloud Drive › Scriptable › Go2FGym-backup |
-| `checkUpdates` | `true` | Offer new versions from GitHub; **Later** waits two days |
-| `ai.autoAnalyze` | `true` | Analyze each workout right after you finish it |
-| `ai.autoStrava` | `true` | Also write a Strava title and description after each workout |
-| `ai.stravaMode` | `"funny"` | Default Strava tone: `"serious"`, `"funny"` or `"neutral"` |
-
-After changing `equipment`, tap **Update library** to download the extra photos.
+| Section | What you can change |
+|---|---|
+| **Appearance** | Colours (Auto or six palettes, Go2FGym red in all), layout (Comfortable, Compact, or Tiny: one line per exercise without photos and one line per workout in History), text size, headline font (the condensed Go2FGym font or serif) |
+| **Workout** | Weight unit, kg or lb (shown and exported) |
+| **Library** | The equipment you own (body weight, dumbbells, barbell, bands, kettlebells, E-Z curl bar, medicine ball, exercise ball, foam roller, other) and whether strongman and Olympic weightlifting exercises are included. After adding equipment, tap **Update library** to download its photos |
+| **History** | Back up history to iCloud Drive › Scriptable › Go2FGym-backup |
+| **AI coach** | AI settings (keys, models, token usage, and the “after each workout” switch) and the default Strava post tone |
+| **Updates** | Offer new versions (**Later** waits two days) and **Check for updates now** |
+| **Timing, Downloads** | Rest timer length (30–300 s, default 90) and how many photos download at once (1–12, default 6), each with Reset |
+| **Built with** | The [shared blueprints](https://github.com/gadominas/app-blueprints) this app follows (see [docs/BLUEPRINTS.md](docs/BLUEPRINTS.md)) |
 
 ## Your data
 

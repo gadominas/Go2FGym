@@ -44,17 +44,7 @@ The widget shows your last workout and how many you've done this week. Tapping i
 
 By default the library contains exercises for **bodyweight, dumbbells, a barbell and resistance bands**. A flat bench is assumed; it isn't listed as separate equipment in the data.
 
-To add more:
-
-1. In Scriptable, open `Go2FGym` for editing.
-2. In the `CONFIG` block at the top, add items to `equipment`, for example:
-   ```js
-   equipment: ["body only", "dumbbell", "barbell", "bands", "kettlebells"],
-   ```
-   Available values: `body only`, `dumbbell`, `barbell`, `kettlebells`, `bands`, `e-z curl bar`, `medicine ball`, `exercise ball`, `foam roll`, `other`.
-3. Run Go2FGym and tap **Train › Update library**.
-
-You can also change `restSeconds` (default `90`) and `unit` (default `"kg"`) there.
+To add more, open Go2FGym, tap the **sliders icon** on the Train tab and switch on your equipment under **Library**, then tap **Update library** to download the photos. The rest timer and weight unit are in Settings too.
 
 ## 5. Optional: connect the AI coach
 
@@ -63,17 +53,15 @@ The AI workout builder and post-workout coach use the OpenAI API with your own k
 1. Create an API key at [platform.openai.com › API keys](https://platform.openai.com/api-keys).
 2. In Go2FGym tap **Train › ✨ Build a workout with AI**, paste the key (it starts with `sk-`) and tap **Save**.
 
-The key is stored in the iOS Keychain on this iPhone and only sent to OpenAI. To remove it, tap **AI key** at the bottom of the Train screen, then tap again to confirm. If OpenAI rejects the key, the app removes it and asks for a new one.
-
-To change the model or switch off the automatic analysis after each workout, edit `ai` in the `CONFIG` block at the top of `Go2FGym.js`.
+The key is typed into a native iOS prompt, stored in the iOS Keychain on this iPhone and only sent to its own provider (Claude or OpenAI). Open **Settings › AI coach › AI settings** to add or remove a key, pick a model, see token usage, or switch off the automatic analysis after each workout (**What AI does**).
 
 ## Updating
 
-From version 1.5.0, Go2FGym checks GitHub each time it opens. When a newer version exists, a sheet shows what's new: tap **Update now**, then close and reopen the app. **Later** hides the offer for two days. Turn the checks off with `checkUpdates: false` in `CONFIG`. What changed in each version is in the [changelog](../CHANGELOG.md).
+From version 1.5.0, Go2FGym checks GitHub each time it opens. When a newer version exists, a sheet shows what's new: tap **Update now**, then close and reopen the app. **Later** hides the offer for two days. Turn the checks off in **Settings › Updates › Offer new versions**, or check at once with **Check for updates now**. What changed in each version is in the [changelog](../CHANGELOG.md).
 
 On a copy older than 1.5.0, or to reinstall, run the one-line installer script again and tap **Update**. Your history and downloaded library are kept, because they live in a separate folder from the script.
 
-If you installed manually, replace the script's contents with the new `Go2FGym.js`. Any changes you made to `CONFIG` need to be made again.
+If you installed manually, replace the script's contents with the new `Go2FGym.js`. Your settings are kept: they live in `settings.json`, not in the script.
 
 ## Backup, restore and new phones
 

@@ -16,38 +16,34 @@
  * Unlicense) — https://github.com/yuhonas/free-exercise-db
  */
 
-// ---------------------------------------------------------------- settings
-const CONFIG = {
-  unit: "kg",
-  restSeconds: 90,
-  // Equipment you own. Add any of: "kettlebells", "e-z curl bar",
-  // "medicine ball", "exercise ball", "foam roll", "other". Then tap
-  // "Update library" in the app to download the extra photos.
-  equipment: ["body only", "dumbbell", "barbell", "bands"],
-  // Categories that need a platform, coach or special gear.
-  skipCategories: ["strongman", "olympic weightlifting"],
+// ---------------------------------------------------------------- fixed choices
+// Everything a user may want different lives in Settings (the sliders icon on the Train tab), saved in settings.json;
+// see the settings defaults and the CONFIG registry further down (github.com/gadominas/app-blueprints · settings).
+const LIBRARY = {
   dataUrl: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json",
   imageBase: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/",
-  parallelDownloads: 6,
-  icloudBackup: true, // mirror history.json to iCloud Drive/Scriptable/Go2FGym-backup
-  checkUpdates: true, // offer new versions from GitHub (asks again 2 days after "Later")
-  ai: {
-    // ✨ Optional AI coach with Claude or OpenAI: add your own key under AI settings (Train tab, bottom).
-    // The switch in AI settings › What AI does turns both "after each workout" jobs below on or off.
-    autoAnalyze: true, // analyze each workout right after you finish it (needs a key)
-    autoStrava: true, // also write a Strava title and description after each workout
-    stravaMode: "funny", // default tone for Strava posts: "serious", "funny" or "neutral"
-  },
 };
+// The two "after each workout" jobs; AI settings › What AI does turns both on or off.
+const COACH = { autoAnalyze: true, autoStrava: true };
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
 const UPDATE_SNOOZE_MS = 2 * 24 * 3600 * 1000;   // "Later" = 2 days
 const KC_UPDATE_SNOOZE = 'go2fgym-update-snooze';   // Keychain key, unique per app
+
+// ───────── Blueprints ─────────
+// Shared blueprints this app was built with (github.com/gadominas/app-blueprints). One line per blueprint, in this exact shape:
+// inventory tools read it without running the script, and Settings › Built with shows it.
+const BLUEPRINTS_REPO = 'https://github.com/gadominas/app-blueprints';
+const BLUEPRINTS = [
+  { id: 'in-app-updates', name: 'In-app updates', version: '1.0.0', since: '1.7.0' },
+  { id: 'settings', name: 'Settings', version: '1.0.0', since: '1.7.0' },
+  { id: 'ai-configuration', name: 'AI configuration', version: '1.0.0', since: '1.6.0' },
+];
 
 // ---------------------------------------------------------------- storage
 const fm = FileManager.local();
@@ -64,6 +60,136 @@ const P = {
   consent: fm.joinPath(ROOT, "disclaimer-accepted.json"),
 };
 for (const d of [ROOT, IMG]) if (!fm.fileExists(d)) fm.createDirectory(d, true);
+
+// ---------------------------------------------------------------- settings (app-blueprints · settings)
+// Choices live in settings.json in iCloud Drive › Scriptable › Go2FGym; workouts and the library stay where they are.
+const sfm = (() => { try { return FileManager.iCloud(); } catch (e) { return FileManager.local(); } })();
+const SET_DIR = sfm.joinPath(sfm.documentsDirectory(), "Go2FGym");
+const SP = (n) => sfm.joinPath(SET_DIR, n + ".json");
+async function load(n, def) {
+  const p = SP(n);
+  if (!sfm.fileExists(p)) return def;
+  try {
+    if (sfm.isFileStoredIniCloud(p) && !sfm.isFileDownloaded(p)) await sfm.downloadFileFromiCloud(p);
+    return JSON.parse(sfm.readString(p));
+  } catch (e) { return def; }   // a broken file falls back to defaults, never crashes
+}
+const write = (n, v) => {
+  try { if (!sfm.fileExists(SET_DIR)) sfm.createDirectory(SET_DIR, true); sfm.writeString(SP(n), JSON.stringify(v)); return true; }
+  catch (e) { console.warn(`Couldn't save ${n}: ${e}`); return false; }
+};
+
+// Equipment the library can include; the first four are on by default.
+const EQUIPMENT = ["body only", "dumbbell", "barbell", "bands", "kettlebells", "e-z curl bar", "medicine ball", "exercise ball", "foam roll", "other"];
+// Defaults first, saved choices on top (loadSettings runs before the app and the widget).
+const settings = {
+  theme: "auto", density: "comfortable", font: "sans", textSize: 1,
+  unit: "kg",
+  equipment: ["body only", "dumbbell", "barbell", "bands"],
+  strongman: false, olympic: false,   // exercise types that need a platform, coach or special gear
+  icloudBackup: true,   // mirror history.json to iCloud Drive/Scriptable/Go2FGym-backup
+  checkUpdates: true,   // offer new versions from GitHub (asks again 2 days after "Later")
+  stravaMode: "funny",  // default tone for Strava posts
+  cfg: {},
+};
+const saveSettings = () => write("settings", settings);
+const skipCategories = () => [settings.strongman ? null : "strongman", settings.olympic ? null : "olympic weightlifting"].filter(Boolean);
+
+// Every key the page may change, with its check and what closing Settings must then do.
+const SET_KEYS = {
+  theme: [(v) => v === "auto" || !!PALETTES[v], ""], density: [(v) => ["comfortable", "compact", "tiny"].includes(v), ""],
+  font: [(v) => ["sans", "serif"].includes(v), ""], textSize: [(v) => [0.92, 1, 1.12, 1.25].includes(+v), ""],
+  unit: [(v) => ["kg", "lb"].includes(v), "reload"],
+  strongman: ["bool", "library"], olympic: ["bool", "library"],
+  icloudBackup: ["bool", ""], checkUpdates: ["bool", ""],
+  stravaMode: [(v) => ["serious", "funny", "neutral"].includes(v), ""],
+};
+// Returns the effect ('', 'library' or 'reload'), or null when the key or value isn't allowed.
+function setSetting(k, v) {
+  const s = SET_KEYS[k];
+  if (!s) return null;
+  if (s[0] === "bool") v = v === true || v === "true";
+  else if (!s[0](v)) return null;
+  if (k === "textSize") v = +v;
+  settings[k] = v;
+  return s[1];
+}
+// Equipment is a list: one switch per item, at least one kept on.
+function toggleEquipment(name) {
+  if (!EQUIPMENT.includes(name)) return null;
+  const on = settings.equipment.includes(name);
+  if (on && settings.equipment.length === 1) return null;
+  settings.equipment = on ? settings.equipment.filter((x) => x !== name) : EQUIPMENT.filter((x) => x === name || settings.equipment.includes(x));
+  return "library";
+}
+
+async function loadSettings() {
+  const saved = await load("settings", null);
+  if (saved) Object.assign(settings, saved);
+  const d = { theme: "auto", density: "comfortable", font: "sans", textSize: 1, unit: "kg", stravaMode: "funny" };
+  for (const k of Object.keys(d)) if (setSetting(k, settings[k]) === null) settings[k] = d[k];
+  settings.equipment = Array.isArray(settings.equipment) ? EQUIPMENT.filter((x) => settings.equipment.includes(x)) : [];
+  if (!settings.equipment.length) settings.equipment = ["body only", "dumbbell", "barbell", "bands"];
+  settings.cfg = settings.cfg && typeof settings.cfg === "object" ? settings.cfg : {};
+  if (!saved) saveSettings();
+}
+
+// Everything tunable lives here; the Settings screen edits these (stored in settings.cfg, defaults below).
+const CONFIG = [
+  ["Timing", [
+    { k: "restSeconds", label: "Rest timer", help: "Started after each set you tick off", unit: "s", def: 90, min: 30, max: 300, step: 15 },
+  ]],
+  ["Downloads", [
+    { k: "parallelDownloads", label: "Photos downloaded at once", help: "Higher is faster but heavier on the network", unit: "", def: 6, min: 1, max: 12, step: 1 },
+  ]],
+];
+const CFG_FLAT = CONFIG.flatMap(([, items]) => items);
+const cfgDef = (k) => CFG_FLAT.find((x) => x.k === k);
+const cfg = (k) => { const v = settings.cfg && settings.cfg[k]; return v === undefined ? cfgDef(k).def : v; };
+function setCfg(k, v) {
+  const d = cfgDef(k);
+  if (!d) return "Unknown setting";
+  settings.cfg = settings.cfg || {};
+  if (v === null) { delete settings.cfg[k]; return ""; }   // Reset
+  v = Number(String(v).replace(",", "."));   // accept a decimal comma
+  if (!isFinite(v)) v = d.def;
+  v = Math.min(d.max, Math.max(d.min, v));
+  v = d.step < 1 ? Math.round(v / d.step) * d.step : Math.round(v);
+  v = Number(v.toFixed(2));
+  if (v === d.def) delete settings.cfg[k]; else settings.cfg[k] = v;   // store only what differs
+  return "";
+}
+
+// Six palettes on the shared colour tokens. Go2FGym red is the accent in all of them; done (the green tick)
+// and iron (the darkest plate) are this app's own extra colours. The other plate colours are fixed artwork.
+const PALETTES = {
+  ink:      { paper: "#E8EBEE", sheet: "#FFFFFF", ink: "#14181C", ink2: "#363D44", muted: "#5A636C", rule: "#D2D7DC", signal: "#C8102E", signalWash: "#F8DDE1", amber: "#9A6200", amberWash: "#FDF0D2", danger: "#B3261E", done: "#2E8B3E", iron: "#2A2E33", scheme: "light" },
+  sepia:    { paper: "#F3EAD6", sheet: "#FBF5E6", ink: "#2A1F14", ink2: "#4B3B2A", muted: "#73604A", rule: "#E1D3B5", signal: "#B5122C", signalWash: "#F3D8D2", amber: "#A16207", amberWash: "#F6E5BF", danger: "#9F1239", done: "#3F7A3A", iron: "#3A2F25", scheme: "light" },
+  mint:     { paper: "#F1F6F3", sheet: "#FFFFFF", ink: "#0D2318", ink2: "#2C4A3B", muted: "#556D60", rule: "#D3E2D9", signal: "#C8102E", signalWash: "#F8DDE1", amber: "#B45309", amberWash: "#FBEED8", danger: "#B91C1C", done: "#15803D", iron: "#22302A", scheme: "light" },
+  contrast: { paper: "#FFFFFF", sheet: "#FFFFFF", ink: "#000000", ink2: "#111111", muted: "#333333", rule: "#9A9A9A", signal: "#A30020", signalWash: "#FFE0E5", amber: "#7A4B00", amberWash: "#FFEEC2", danger: "#A30000", done: "#006B2E", iron: "#000000", scheme: "light" },
+  slate:    { paper: "#1C2128", sheet: "#22272E", ink: "#E6EDF3", ink2: "#C5CED8", muted: "#9AA5B1", rule: "#373E47", signal: "#F0485F", signalWash: "#3D1E25", amber: "#E3B341", amberWash: "#3A2F12", danger: "#FF8A7A", done: "#45AD59", iron: "#12161B", scheme: "dark" },
+  night:    { paper: "#16191C", sheet: "#22272B", ink: "#EEF1F4", ink2: "#CDD3D9", muted: "#9AA4AD", rule: "#353B41", signal: "#E8344B", signalWash: "#3A1A20", amber: "#F5C04A", amberWash: "#2D240C", danger: "#FF8F7A", done: "#45AD59", iron: "#0F1113", scheme: "dark" },
+};
+const PALETTE_CSS = Object.entries(PALETTES).map(([k, p]) => `[data-theme=${k}]{--paper:${p.paper};--sheet:${p.sheet};--ink:${p.ink};--ink-2:${p.ink2};--muted:${p.muted};--rule:${p.rule};--signal:${p.signal};--signal-wash:${p.signalWash};--amber:${p.amber};--amber-wash:${p.amberWash};--danger:${p.danger};--done:${p.done};--p-iron:${p.iron};color-scheme:${p.scheme}}`).join("\n");
+
+// The look for the first paint, so the page never flashes the default palette (the page keeps Auto live afterwards).
+function lookState() {
+  return { theme: settings.theme, density: settings.density, font: settings.font, textSize: settings.textSize,
+           shown: settings.theme === "auto" ? (Device.isUsingDarkAppearance() ? "night" : "ink") : settings.theme };
+}
+
+// What the Settings sheet shows. Keys never go to the page: AI settings has its own sheet.
+function settingsState() {
+  return {
+    settings: Object.assign(Object.fromEntries(Object.keys(SET_KEYS).map((k) => [k, settings[k]])), { equipment: settings.equipment }),
+    equipmentAll: EQUIPMENT,
+    cfg: Object.fromEntries(CFG_FLAT.map((d) => [d.k, cfg(d.k)])),
+    cfgSchema: CONFIG.map(([title, items]) => ({ title, items })),
+    palettes: PALETTES, version: VERSION, appName: "Go2FGym",
+    blueprints: BLUEPRINTS, blueprintsRepo: BLUEPRINTS_REPO,
+    hasKey: !!aiKey(), aiStatus: aiStatusLine(),
+  };
+}
 
 // Bump when the disclaimer text changes materially, so users accept it again.
 const DISCLAIMER_VERSION = 2;
@@ -104,7 +230,7 @@ function loadHistory() {
 function saveHistory(h) {
   h.sessions.sort((a, b) => a.start.localeCompare(b.start));
   writeJSON(P.history, h);
-  if (!CONFIG.icloudBackup) return;
+  if (!settings.icloudBackup) return;
   const c = icloudDir();
   if (c) {
     try {
@@ -133,7 +259,7 @@ async function restoreFromBackupIfNeeded() {
 }
 
 function toCSV(h) {
-  const rows = [["date", "workout_id", "muscle_groups", "exercise", "set", `weight_${CONFIG.unit}`, "reps"]];
+  const rows = [["date", "workout_id", "muscle_groups", "exercise", "set", `weight_${settings.unit}`, "reps"]];
   for (const s of h.sessions)
     for (const en of s.entries)
       en.sets.forEach((x, i) =>
@@ -154,7 +280,7 @@ function toCSV(h) {
 // ---------------------------------------------------------------- library
 function isHomeExercise(e) {
   const eq = e.equipment || "body only";
-  return CONFIG.equipment.includes(eq) && !CONFIG.skipCategories.includes(e.category);
+  return settings.equipment.includes(eq) && !skipCategories().includes(e.category);
 }
 
 function buildLibrary() {
@@ -182,7 +308,7 @@ const forWeb = (lib) => lib.map(({ img, ...rest }) => rest);
 
 async function syncLibrary(report) {
   await report({ phase: "Downloading exercise list", done: 0, total: 0 });
-  const req = new Request(CONFIG.dataUrl);
+  const req = new Request(LIBRARY.dataUrl);
   req.timeoutInterval = 60;
   const all = await req.loadJSON();
   if (!Array.isArray(all) || !all.length) throw new Error("The exercise list came back empty. Check your connection and try again.");
@@ -199,12 +325,12 @@ async function syncLibrary(report) {
   let failed = 0;
   const total = jobs.length;
   await report({ phase: "Downloading photos", done, total });
-  for (let i = 0; i < jobs.length; i += CONFIG.parallelDownloads) {
-    const batch = jobs.slice(i, i + CONFIG.parallelDownloads);
+  for (let i = 0; i < jobs.length; i += cfg("parallelDownloads")) {
+    const batch = jobs.slice(i, i + cfg("parallelDownloads"));
     await Promise.all(
       batch.map(async (j) => {
         try {
-          const r = new Request(CONFIG.imageBase + encodeURI(j.rel));
+          const r = new Request(LIBRARY.imageBase + encodeURI(j.rel));
           r.timeoutInterval = 30;
           const data = await r.load();
           if (data && r.response && r.response.statusCode === 200) fm.write(j.local, data);
@@ -250,7 +376,7 @@ function clearUpdateSnooze() {
 
 // Never throws and never blocks: any failure just means no update is offered this time.
 async function checkForUpdate() {
-  if (!CONFIG.checkUpdates || updateSnoozed()) return null;
+  if (!settings.checkUpdates || updateSnoozed()) return null;
   try {
     const req = new Request(`${REPO_RAW}releases.json?t=${Date.now()}`);
     req.timeoutInterval = 10;
@@ -574,16 +700,19 @@ async function runApp() {
   let libById = Object.fromEntries(lib.map((e) => [e.id, e]));
   let history = loadHistory();
 
-  const boot = {
+  const makeBoot = () => ({
     lib: forWeb(lib),
     history,
     draft: readJSON(P.draft, null),
-    ai: { hasKey: !!aiKey(), bg: aiSettings.ai, autoAnalyze: CONFIG.ai.autoAnalyze, autoStrava: CONFIG.ai.autoStrava, stravaMode: CONFIG.ai.stravaMode },
+    ai: { hasKey: !!aiKey(), bg: aiSettings.ai, autoAnalyze: COACH.autoAnalyze, autoStrava: COACH.autoStrava, stravaMode: settings.stravaMode },
     meta: readJSON(P.meta, null),
     consent: readJSON(P.consent, null),
     version: VERSION,
-    cfg: { unit: CONFIG.unit, rest: CONFIG.restSeconds, equipment: CONFIG.equipment, disclaimerVersion: DISCLAIMER_VERSION },
-  };
+    look: lookState(),
+    cfg: { unit: settings.unit, rest: cfg("restSeconds"), equipment: settings.equipment, disclaimerVersion: DISCLAIMER_VERSION },
+  });
+  const boot = makeBoot();
+  let settingsEffect = "";   // what closing Settings must do: "", "library" or "reload"
 
   const wv = new WebView();
   const js = async (code) => {
@@ -603,6 +732,43 @@ async function runApp() {
       return;
     }
     switch (m.type) {
+      // Settings (app-blueprints · settings): each change is applied and saved at once; the page gets the fresh state.
+      case "settings-get":
+      case "set":
+      case "equip":
+      case "cfg": {
+        let effect = "";
+        if (m.type === "set") effect = setSetting(p.k, p.v);
+        else if (m.type === "equip") effect = toggleEquipment(p.v);
+        else if (m.type === "cfg") { if (p.k === "*") settings.cfg = {}; else setCfg(p.k, p.reset ? null : p.v); }
+        if (effect === null) await js(`HG.toast(${J(m.type === "equip" ? "Keep at least one kind of equipment." : "That setting can’t be changed here.")})`);
+        else if (effect) settingsEffect = settingsEffect === "reload" || effect === "reload" ? "reload" : effect;
+        if (m.type !== "settings-get") saveSettings();
+        await js(`HG.onSettings(${J(settingsState())})`);
+        break;
+      }
+      case "settings-done": {   // the sheet closed: rebuild the library or reload the page once, if needed
+        const effect = settingsEffect;
+        settingsEffect = "";
+        if (effect === "library" || effect === "reload") {
+          lib = buildLibrary();
+          libById = Object.fromEntries(lib.map((e) => [e.id, e]));
+        }
+        if (effect === "reload") await wv.loadHTML(buildHTML(makeBoot()));
+        else if (effect === "library") await js(`HG.onLibrary(${J(forWeb(lib))},${J(readJSON(P.meta, null))})`);
+        break;
+      }
+      case "update-check": {   // Settings › Check for updates now: clears "Later" and checks at once
+        clearUpdateSnooze();
+        const was = settings.checkUpdates; settings.checkUpdates = true;
+        const u = await checkForUpdate(); settings.checkUpdates = was;
+        await js(`HG.onUpdateCheck(${J(u ? `Version ${u.latest} is available` : `You're on the latest version (${VERSION})`)},${!!u})`);
+        if (u) { pendingUpdate = u; await js(`window.__showUpdate(${J(u)})`); }
+        break;
+      }
+      case "openurl":   // Built with: only the blueprints repository opens from here
+        if (p.v === BLUEPRINTS_REPO || String(p.v).startsWith(BLUEPRINTS_REPO + "/")) await Safari.openInApp(p.v, false);
+        break;
       case "images":
         for (const id of p.ids || []) {
           const ex = libById[id];
@@ -727,7 +893,7 @@ async function runApp() {
   // Once per run, after the first screen has rendered, so it never slows the start.
   checkForUpdate().then((u) => {
     pendingUpdate = u;
-    if (u && open) js(`HG.showUpdate(${J(u)})`);
+    if (u && open) js(`window.__showUpdate(${J(u)})`);
   });
   while (open) {
     await pump();
@@ -738,10 +904,11 @@ async function runApp() {
 
 function buildHTML(boot) {
   const data = J(boot).replace(/<\//g, "<\\/");
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+  const look = lookState();
+  return `<!doctype html><html lang="en" data-theme="${look.shown}" data-font="${look.font}" style="--ts:${look.textSize}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark"><title>Go2FGym</title><style>${CSS}</style></head>
-<body><main id="app"></main>
+<body class="d-${look.density}"><main id="app"></main>
 <div id="rest" hidden><div class="rest-fill"></div><span class="rest-label">Rest</span><span class="rest-time">0:00</span>
 <button data-a="rest-add">+30 s</button><button data-a="rest-skip">Skip</button></div>
 <div id="sat"></div><button id="last" data-a="last" hidden></button>
@@ -1124,7 +1291,129 @@ function webApp() {
     S.ai.bg = s.ai;
     if (!s.hasKey && (S.trainView === "ai" || S.trainView === "plan") && !S.plan) S.trainView = "home";
     if (changed) render();
+    const st = document.getElementById("s-aistatus"), P = s.usage.p[s.provider];   // the AI settings row in Settings
+    if (st) st.textContent = s.hasKey ? `${AI_PN[s.provider]} — ${s.model[s.provider]}${P && P.calls ? ` — ${aiFmtN(P.in + P.out)} tokens used` : ""}` : "Add a Claude or OpenAI key for the AI coach";
   };
+
+  // The in-app updates blueprint's name for the update hook (HG.showUpdate stays for older callers).
+  window.__showUpdate = (u) => HG.showUpdate(u);
+
+  // ------------------------------------------------ Settings (app-blueprints · settings): every change applies at once and is saved; Done closes
+  const EQ_NAMES = { "body only": "Body weight", dumbbell: "Dumbbells", barbell: "Barbell", bands: "Bands", kettlebells: "Kettlebells", "e-z curl bar": "E-Z curl bar", "medicine ball": "Medicine ball", "exercise ball": "Exercise ball", "foam roll": "Foam roller", other: "Other" };
+  const LOOK = Object.assign({ theme: "auto", density: "comfortable", font: "sans", textSize: 1 }, BOOT.look || {});
+  let SET = null, cfgOpen = false, cfgArmed = false;
+  const darkMQ = window.matchMedia ? matchMedia("(prefers-color-scheme: dark)") : { matches: false };
+  function applyLook() {
+    const root = document.documentElement;
+    root.dataset.theme = LOOK.theme === "auto" ? (darkMQ.matches ? "night" : "ink") : LOOK.theme;
+    root.dataset.font = LOOK.font;
+    root.style.setProperty("--ts", LOOK.textSize);
+    document.body.classList.remove("d-comfortable", "d-compact", "d-tiny");
+    document.body.classList.add("d-" + LOOK.density);
+  }
+  const onDark = () => { if (LOOK.theme === "auto") applyLook(); };
+  if (darkMQ.addEventListener) darkMQ.addEventListener("change", onDark); else if (darkMQ.addListener) darkMQ.addListener(onDark);
+  const cfgSheet = () => {
+    let el = document.getElementById("cfgsheet");
+    if (!el) {
+      el = document.createElement("div"); el.id = "cfgsheet"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Settings");
+      document.body.appendChild(el);
+      el.addEventListener("click", cfgClick);
+      el.addEventListener("change", cfgChange);
+    }
+    return el;
+  };
+  const cfgItem = (k) => { for (const sec of SET.cfgSchema) for (const d of sec.items) if (d.k === k) return d; return null; };
+  const cfgChanged = (k) => { const d = cfgItem(k); return !!d && JSON.stringify(SET.cfg[k]) !== JSON.stringify(d.def); };
+  const fmtCfg = (d, v) => (d.step && d.step < 1 ? Number(v).toFixed(String(d.step).split(".")[1].length) : String(v));
+  const segRow = (k, opts, cur, act) => `<div class="seg wide">${opts.map(([v, l]) => `<button class="${String(cur) === String(v) ? "on" : ""}" data-act="${act || "look"}" data-k="${k}" data-v="${v}">${esc(l)}</button>`).join("")}</div>`;
+  function lookHTML() {
+    const P = SET.palettes, themes = [["auto", "Auto"]].concat(Object.keys(P).map((k) => [k, k[0].toUpperCase() + k.slice(1)]));
+    return `<div class="lk-row"><span class="lk-l">Colours</span><div class="sws">${themes.map(([k, l]) => {
+        const st = k === "auto" ? `background:linear-gradient(135deg,${P.ink.paper} 50%,${P.night.sheet} 50%);color:${P.night.signal}` : `background:${P[k].paper};color:${P[k].ink}`;
+        return `<button class="sw ${LOOK.theme === k ? "on" : ""}" data-act="look" data-k="theme" data-v="${k}" aria-label="${l} colours"><span class="prev" style="${st}">Aa<i style="background:${(P[k] || P.night).signal}"></i></span><small>${l}</small></button>`;
+      }).join("")}</div></div>
+      <div class="lk-row"><span class="lk-l">Layout</span>${segRow("density", [["comfortable", "Comfortable"], ["compact", "Compact"], ["tiny", "Tiny"]], LOOK.density)}</div>
+      <div class="lk-row"><span class="lk-l">Text size</span>${segRow("textSize", [[0.92, "Small"], [1, "Default"], [1.12, "Large"], [1.25, "Larger"]], LOOK.textSize)}</div>
+      <div class="lk-row"><span class="lk-l">Headline font</span>${segRow("font", [["sans", "Sans serif"], ["serif", "Serif"]], LOOK.font)}</div>`;
+  }
+  const swRow = (k, label, help, on, act) => `<div class="srow"><div class="grow"><b>${esc(label)}</b>${help ? `<small>${esc(help)}</small>` : ""}</div><button class="switch ${on ? "on" : ""}" data-act="${act || "toggle"}" data-v="${esc(k)}" aria-label="${esc(label)}"></button></div>`;
+  function fieldHTML(d) {
+    const v = SET.cfg[d.k], ch = cfgChanged(d.k);
+    const reset = ch ? `<button class="link small" data-act="cfgreset" data-k="${d.k}">Reset</button>` : "";
+    const head = `<div class="cfg-h"><b>${esc(d.label)}</b>${reset}</div>${d.help ? `<small class="muted">${esc(d.help)}</small>` : ""}`;
+    return `<div class="cfg ${ch ? "ch" : ""}">${head}
+      <div class="stepper"><button data-act="cfgstep" data-k="${d.k}" data-v="-1" aria-label="Decrease" ${v <= d.min ? "disabled" : ""}>−</button>
+      <input class="cfgin" data-k="${d.k}" value="${fmtCfg(d, v)}" inputmode="decimal" aria-label="${esc(d.label)}">
+      <button data-act="cfgstep" data-k="${d.k}" data-v="1" aria-label="Increase" ${v >= d.max ? "disabled" : ""}>+</button>
+      <span class="unit">${esc(d.unit || "")}</span><span class="range">${fmtCfg(d, d.min)}–${fmtCfg(d, d.max)}${ch ? ` — original ${fmtCfg(d, d.def)}` : ""}</span></div></div>`;
+  }
+  const bpLink = (b) => `${SET.blueprintsRepo}/blob/${b.id}-v${b.version}/blueprints/${b.id}.md`;
+  function builtWithHTML() {
+    return `<h3 class="sec">Built with</h3><p class="hint">${esc(SET.appName)} is built from shared blueprints that the other apps use too. Tap one to read how that part works.</p>
+      ${SET.blueprints.map((b) => `<button class="srow bp" data-act="openurl" data-v="${esc(bpLink(b))}"><div class="grow"><b>${esc(b.name)}</b><small class="muted">Blueprint ${esc(b.version)} · since ${esc(SET.appName)} ${esc(b.since)}</small></div><span class="chev" aria-hidden="true">›</span></button>`).join("")}
+      <button class="srow bp" data-act="openurl" data-v="${esc(SET.blueprintsRepo)}"><div class="grow"><b>All blueprints</b><small class="muted">${esc(SET.blueprintsRepo.replace("https://", ""))}</small></div><span class="chev" aria-hidden="true">›</span></button>`;
+  }
+  let libDirty = false;
+  function renderCfg() {
+    const el = cfgSheet(), keep = el.scrollTop;
+    el.classList.toggle("open", cfgOpen);
+    document.body.style.overflow = cfgOpen ? "hidden" : "";
+    if (!cfgOpen || !SET) return;
+    const s = SET.settings, changed = Object.keys(SET.cfg).filter(cfgChanged).length;
+    el.innerHTML = `<div class="sh-head"><h2>Settings</h2><button class="link" data-act="cfgclose">Done</button></div><div class="sh-body">
+      <p class="hint">Changes apply right away and are kept on this iPhone.</p>
+      <h3 class="sec">Appearance</h3>${lookHTML()}
+      <h3 class="sec">Workout</h3>
+      <div class="lk-row"><span class="lk-l">Weight unit</span>${segRow("unit", [["kg", "kg"], ["lb", "lb"]], s.unit, "set")}<small class="muted">The app redraws in this unit when you close Settings</small></div>
+      <h3 class="sec">Library</h3>
+      <p class="hint">Equipment you own. Exercises for it appear in the library.</p>
+      ${SET.equipmentAll.map((q) => swRow(q, EQ_NAMES[q] || q, "", s.equipment.includes(q), "equip")).join("")}
+      ${swRow("strongman", "Strongman exercises", "Need special gear", s.strongman)}
+      ${swRow("olympic", "Olympic weightlifting", "Need a platform and a coach", s.olympic)}
+      ${libDirty ? `<div class="srow"><div class="grow"><b>Download photos for new equipment</b><small>The library updates when you close Settings; photos need a download</small></div><button class="sm" data-act="sync">Update library</button></div>` : ""}
+      <h3 class="sec">History</h3>
+      ${swRow("icloudBackup", "Back up history to iCloud Drive", "iCloud Drive › Scriptable › Go2FGym-backup", s.icloudBackup)}
+      <h3 class="sec">AI coach</h3>
+      <div class="srow"><div class="grow"><b>Keys, models and token usage</b><small id="s-aistatus">${esc(SET.hasKey ? SET.aiStatus : "Add a Claude or OpenAI key for the AI coach")}</small></div><button class="sm" data-act="ai-open">AI settings</button></div>
+      <div class="lk-row"><span class="lk-l">Default Strava post tone</span>${segRow("stravaMode", [["serious", "Serious"], ["funny", "Funny"], ["neutral", "Neutral"]], s.stravaMode, "set")}</div>
+      <h3 class="sec">Updates</h3>
+      ${swRow("checkUpdates", "Offer new versions", `You have Go2FGym ${SET.version}. “Later” waits two days.`, s.checkUpdates)}
+      <div class="srow"><div class="grow"><b>Check for updates now</b><small id="updmsg" class="muted" aria-live="polite"></small></div><button class="sm" data-act="updcheck">Check</button></div>
+      ${SET.cfgSchema.map((sec) => `<h3 class="sec">${esc(sec.title)}</h3>${sec.items.map(fieldHTML).join("")}`).join("")}
+      <div class="cfg-foot"><span class="note">${changed ? `${changed} setting${changed === 1 ? "" : "s"} changed` : "All settings are at their original values"}</span>
+        ${changed ? `<button class="sm danger ${cfgArmed ? "armed" : ""}" data-act="cfgall">${cfgArmed ? "Confirm reset" : "Reset all"}</button>` : ""}</div>
+      ${builtWithHTML()}</div>`;
+    el.scrollTop = keep;   // re-renders must not jump back to the top
+  }
+  function openSettings() { if (cfgOpen) return; cfgOpen = true; libDirty = false; send("settings-get", {}); renderCfg(); }
+  function closeSettings() { cfgOpen = false; cfgArmed = false; renderCfg(); send("settings-done", {}); }
+  function cfgClick(e) {
+    e.stopPropagation();   // the sheet's taps never reach the app's own click handler
+    if (e.target.closest("select, option, input, textarea")) return;
+    const t = e.target.closest("[data-act]"); if (!t || t.disabled) return;
+    const act = t.dataset.act, v = t.dataset.v, k = t.dataset.k;
+    if (act === "cfgclose") return closeSettings();
+    if (act === "look") { const val = k === "textSize" ? +v : v; LOOK[k] = val; applyLook(); renderCfg(); return send("set", { k, v: val }); }
+    if (act === "set") { SET.settings[k] = v; renderCfg(); return send("set", { k, v }); }
+    if (act === "toggle") { SET.settings[v] = !SET.settings[v]; if (v === "strongman" || v === "olympic") libDirty = true; renderCfg(); return send("set", { k: v, v: SET.settings[v] }); }
+    if (act === "equip") { libDirty = true; return send("equip", { v }); }
+    if (act === "cfgreset") return send("cfg", { k, reset: 1 });
+    if (act === "cfgstep") { const d = cfgItem(k), step = d.step || 1; SET.cfg[k] = Number(Math.min(d.max, Math.max(d.min, Number(SET.cfg[k]) + step * +v)).toFixed(2)); renderCfg(); return send("cfg", { k, v: SET.cfg[k] }); }
+    if (act === "cfgall") {
+      if (cfgArmed) { cfgArmed = false; return send("cfg", { k: "*" }); }
+      cfgArmed = true; renderCfg(); setTimeout(() => { if (cfgArmed) { cfgArmed = false; renderCfg(); } }, 3500); return;
+    }
+    if (act === "ai-open") return window.__aiOpen();
+    if (act === "openurl") return send("openurl", { v });
+    if (act === "updcheck") { const um = document.getElementById("updmsg"); t.disabled = true; if (um) um.textContent = "Checking…"; return send("update-check", {}); }
+    if (act === "sync") { closeSettings(); return send("sync", {}); }
+  }
+  function cfgChange(e) {
+    e.stopPropagation();
+    if (e.target.classList.contains("cfgin")) send("cfg", { k: e.target.dataset.k, v: e.target.value });
+  }
+  applyLook();
 
   // ------------------------------------------------ AI coach
   const INTENSITY = [
@@ -1492,7 +1781,8 @@ function webApp() {
 
   function appHeader() {
     return `<header class="brand"><span class="brand-mark">${LOGO}</span><span class="brand-name">Go2FGym</span>
-      <button class="club" data-a="club" aria-label="Inspired by the 7AM Club community. Opens their Instagram.">Inspired by <b>7AM Club</b> <span aria-hidden="true">↗</span></button></header>`;
+      <button class="club" data-a="club" aria-label="Inspired by the 7AM Club community. Opens their Instagram.">Inspired by <b>7AM Club</b> <span aria-hidden="true">↗</span></button>
+      <button class="icon" data-a="settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button></header>`;
   }
 
   function renderDisclaimer() {
@@ -1544,7 +1834,7 @@ function webApp() {
       <footer class="lib">
         <p class="muted small">${S.lib.length} exercises for ${esc(eqNames())} stored on this phone${S.meta ? `, updated ${esc(day(S.meta.syncedAt))}` : ""}. Photos and instructions from free-exercise-db (public domain).</p>
         ${missingPhotos() && !S.sync ? `<p class="small"><b>${plural(missingPhotos(), "exercise")} ${missingPhotos() === 1 ? "has" : "have"} no photos yet.</b> Tap Update library to download them.</p>` : ""}
-        <div class="row">${S.sync ? "" : `<button class="link" data-a="sync">Update library</button>`}<button class="link" data-a="aisettings">AI settings</button><button class="link danger" data-a="disclaimer">Disclaimer</button></div>
+        <div class="row">${S.sync ? "" : `<button class="link" data-a="sync">Update library</button>`}<button class="link danger" data-a="disclaimer">Disclaimer</button></div>
         ${S.sync ? syncProgress() : ""}
         <p class="ver">Go2FGym v${esc(BOOT.version || "")}</p>
       </footer>`;
@@ -2127,6 +2417,7 @@ function webApp() {
       openBuilder(s && s.ai ? s.ai.next.groups : []);
     },
     aisettings: () => window.__aiOpen(),
+    settings: () => openSettings(),
     "upd-now": (v, t) => updNow(t),
     "upd-later": () => updLater(),
     "upd-close": () => { const uo = $("#upd"); if (uo) uo.remove(); },
@@ -2319,6 +2610,17 @@ function webApp() {
       } else if (out.error) toast(`AI coach: ${out.error}`, true);
       if (done) done(out.data ? Object.assign(out.data, { _by: out.by }) : null);
     },
+    onSettings(st) {   // fresh Settings state from the Scriptable side
+      SET = st;
+      CFG.rest = st.cfg.restSeconds;
+      S.ai.stravaMode = st.settings.stravaMode;
+      renderCfg();
+    },
+    onUpdateCheck(msg, available) {
+      const um = document.getElementById("updmsg"), b = document.querySelector('#cfgsheet [data-act="updcheck"]');
+      if (um) um.textContent = msg; if (b) b.disabled = false;
+      if (available) closeSettings();
+    },
     showUpdate(u) {
       if (!u || !u.latest) return;
       S.update = u;
@@ -2408,45 +2710,47 @@ const CSS = `
 .badge-ex{display:inline-block;font-size:12px;font-weight:600;color:var(--muted);border:1px dashed var(--muted);border-radius:6px;padding:1px 8px}
 .st-post{margin-top:8px}
 :root{
-  --bg:#E8EBEE;--surface:#FFFFFF;--ink:#14181C;--muted:#5A636C;--line:#D2D7DC;
-  --accent:#C8102E;--accent-ink:#FFFFFF;--done:#2E8B3E;
-  --p-red:#C8102E;--p-blue:#1F4E9E;--p-yellow:#F2B705;--p-green:#2E8B3E;--p-white:#F4F4F1;--p-steel:#7B8794;--p-iron:#2A2E33;
-  --display:"Avenir Next Condensed","AvenirNextCondensed-Bold","Arial Narrow",system-ui,sans-serif;
-  --body:-apple-system,system-ui,"Helvetica Neue",sans-serif;
-  color-scheme:light dark;
+  --ts:1; --serif: ui-serif, "New York", Georgia, serif; --sans: -apple-system, system-ui, "Helvetica Neue", sans-serif;
+  --condensed:"Avenir Next Condensed","AvenirNextCondensed-Bold","Arial Narrow",system-ui,sans-serif;
+  --display:var(--condensed); --body:var(--sans);
+  --accent-ink:#FFFFFF;
+  --p-red:#C8102E;--p-blue:#1F4E9E;--p-yellow:#F2B705;--p-green:#2E8B3E;--p-white:#F4F4F1;--p-steel:#7B8794;
+  --thumb:64px; --expad:10px 12px; --entrypad:12px 14px 4px;
 }
-@media (prefers-color-scheme:dark){:root{
-  --bg:#16191C;--surface:#22272B;--ink:#EEF1F4;--muted:#9AA4AD;--line:#353B41;--accent:#E8344B;--done:#45AD59;--p-iron:#0F1113;
-}}
+html[data-font=serif]{--display:var(--serif)}
+${PALETTE_CSS}
+:root{--bg:var(--paper);--surface:var(--sheet);--line:var(--rule);--accent:var(--signal)}
+body.d-compact{--thumb:48px;--expad:7px 12px}
+body.d-tiny{--thumb:0px;--expad:8px 12px}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);-webkit-text-size-adjust:100%}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:calc(16px * var(--ts))/1.45 var(--body);-webkit-text-size-adjust:100%}
 body{padding:var(--band,env(safe-area-inset-top,0px)) 0 calc(150px + env(safe-area-inset-bottom,0px))}
 body::before{content:"";position:fixed;inset:0 0 auto;height:var(--band,env(safe-area-inset-top,0px));background:var(--bg);z-index:10}
 #sat{position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none}
 #last{position:fixed;z-index:12;left:50%;top:var(--pill-top,5px);transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
   height:34px;max-width:var(--pill-max,calc(100vw - 24px));padding:0 12px;border-radius:12px;background:var(--surface);border:1px solid var(--line);
-  font:500 11.5px/1.1 var(--body);color:var(--muted);white-space:nowrap;overflow:hidden}
+  font:500 calc(11.5px * var(--ts))/1.1 var(--body);color:var(--muted);white-space:nowrap;overflow:hidden}
 #last[hidden]{display:none}
 #last .last-1,#last .last-2{display:flex;align-items:center;gap:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 #last .last-1{color:var(--ink);font-weight:600}
-#last .last-k{font-weight:800;color:var(--accent);text-transform:uppercase;font-size:9.5px;letter-spacing:.06em}
+#last .last-k{font-weight:800;color:var(--accent);text-transform:uppercase;font-size:calc(9.5px * var(--ts));letter-spacing:.06em}
 #last .dots{gap:3px;flex:none}#last .dot{width:7px;height:7px}
-.hbtn{flex:none;background:var(--accent);color:var(--accent-ink);font:700 15px/1 var(--body);padding:9px 14px;border-radius:999px;white-space:nowrap;text-align:center}
+.hbtn{flex:none;background:var(--accent);color:var(--accent-ink);font:700 calc(15px * var(--ts))/1 var(--body);padding:9px 14px;border-radius:999px;white-space:nowrap;text-align:center}
 .hbtn:disabled{opacity:.4}
 #app{max-width:640px;margin:0 auto;padding:0 16px 32px}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:inherit}
 button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-h2{font:700 20px/1.2 var(--display);margin:22px 0 8px}
+h2{font:700 calc(20px * var(--ts))/1.2 var(--display);margin:22px 0 8px}
 p{margin:0 0 10px}
-.muted{color:var(--muted)}.small{font-size:14px}
-.hero{font:800 46px/.95 var(--display);margin:14px 0 8px;letter-spacing:-.01em}
+.muted{color:var(--muted)}.small{font-size:calc(14px * var(--ts))}
+.hero{font:800 calc(46px * var(--ts))/.95 var(--display);margin:14px 0 8px;letter-spacing:-.01em}
 .brand{display:flex;align-items:center;gap:8px;min-height:44px;padding-top:4px;border-bottom:1px solid var(--line)}
 .brand-mark svg{display:block;width:24px;height:24px}
-.brand-name{font:800 19px/1 var(--display);margin-right:auto;letter-spacing:-.01em}
-.club{font-size:13px;color:var(--muted);padding:10px 0 10px 8px;white-space:nowrap}
+.brand-name{font:800 calc(19px * var(--ts))/1 var(--display);margin-right:auto;letter-spacing:-.01em}
+.club{font-size:calc(13px * var(--ts));color:var(--muted);padding:10px 0 10px 8px;white-space:nowrap}
 .club b{color:var(--ink);font-weight:700}
 .club span{color:var(--accent);font-weight:700}
-.title{font:800 32px/1.02 var(--display);margin:6px 0 12px;letter-spacing:-.01em}
+.title{font:800 calc(32px * var(--ts))/1.02 var(--display);margin:6px 0 12px;letter-spacing:-.01em}
 .lead{color:var(--muted);margin-bottom:16px}
 .bar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;position:sticky;top:var(--band,env(safe-area-inset-top,0px));background:var(--bg);z-index:5}
 .bar .title{margin:10px 0}
@@ -2454,7 +2758,7 @@ p{margin:0 0 10px}
 .link{color:var(--accent);font-weight:600;padding:10px 0}
 .link.danger{color:var(--muted)}
 .armed{color:var(--accent)!important;text-decoration:underline}
-.primary{display:block;width:100%;margin:14px 0 6px;padding:15px 16px;border-radius:12px;background:var(--accent);color:var(--accent-ink);font:700 20px/1 var(--display);text-align:center}
+.primary{display:block;width:100%;margin:14px 0 6px;padding:15px 16px;border-radius:12px;background:var(--accent);color:var(--accent-ink);font:700 calc(20px * var(--ts))/1 var(--display);text-align:center}
 .primary:disabled{opacity:.35}
 .primary.armed{background:var(--ink);color:var(--bg)!important;text-decoration:none}
 .secondary{display:block;width:100%;margin:6px 0;padding:13px 16px;border-radius:12px;border:1.5px solid var(--line);font-weight:600;text-align:center}
@@ -2463,8 +2767,8 @@ p{margin:0 0 10px}
   box-shadow:inset 0 0 0 5px rgba(0,0,0,.16),inset 0 0 0 9px rgba(255,255,255,.10),inset 0 0 0 1px rgba(0,0,0,.25);transition:transform .15s ease,box-shadow .15s ease}
 .plate::after{content:"";position:absolute;left:50%;top:50%;width:17%;aspect-ratio:1;border-radius:50%;transform:translate(-50%,-50%);
   background:var(--bg);box-shadow:inset 0 0 0 3px rgba(0,0,0,.28),0 0 0 4px rgba(0,0,0,.12)}
-.pl-name{position:absolute;left:8%;right:8%;top:20%;text-align:center;font:800 17px/1 var(--display);letter-spacing:-.01em}
-.pl-count{position:absolute;left:0;right:0;bottom:19%;text-align:center;font:600 13px/1 var(--body);opacity:.8;font-variant-numeric:tabular-nums}
+.pl-name{position:absolute;left:8%;right:8%;top:20%;text-align:center;font:800 calc(17px * var(--ts))/1 var(--display);letter-spacing:-.01em}
+.pl-count{position:absolute;left:0;right:0;bottom:19%;text-align:center;font:600 calc(13px * var(--ts))/1 var(--body);opacity:.8;font-variant-numeric:tabular-nums}
 .plate[aria-pressed="true"]{transform:scale(1.05);box-shadow:0 0 0 3px var(--bg),0 0 0 6px var(--ink),inset 0 0 0 5px rgba(0,0,0,.16),inset 0 0 0 9px rgba(255,255,255,.10)}
 .plate[aria-pressed="false"]{opacity:.82}
 @media (prefers-color-scheme:dark){.pl-iron{box-shadow:inset 0 0 0 5px rgba(255,255,255,.14),inset 0 0 0 1.5px rgba(255,255,255,.35)}}
@@ -2476,19 +2780,19 @@ p{margin:0 0 10px}
 .progress i{display:block;height:100%;background:var(--accent);transition:width .3s}
 .chips{display:flex;gap:8px;overflow-x:auto;margin:0 -16px 8px;padding:2px 16px;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
-.chip{flex:none;padding:7px 13px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:14px;white-space:nowrap}
+.chip{flex:none;padding:7px 13px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:calc(14px * var(--ts));white-space:nowrap}
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .search{width:100%;font:16px var(--body);padding:11px 14px;margin:6px 0 4px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);-webkit-appearance:none}
 .count{margin:10px 2px 6px}
 .list{background:var(--surface);border-radius:14px;overflow:hidden}
-.ex{display:grid;grid-template-columns:64px 1fr 42px;gap:12px;align-items:center;padding:10px 12px;border-top:1px solid var(--line)}
+.ex{display:grid;grid-template-columns:var(--thumb) 1fr 42px;gap:12px;align-items:center;padding:var(--expad);border-top:1px solid var(--line)}
 .ex:first-child{border-top:0}
-.ex-name{font-weight:600;line-height:1.25}.ex-meta{font-size:13px;color:var(--muted);margin-top:2px}
-.thumb{position:relative;width:64px;height:64px;border-radius:8px;background:var(--bg);overflow:hidden;display:grid;place-items:center}
-.thumb span{font:800 18px var(--display);color:var(--muted)}
+.ex-name{font-weight:600;line-height:1.25}.ex-meta{font-size:calc(13px * var(--ts));color:var(--muted);margin-top:2px}
+.thumb{position:relative;width:var(--thumb);height:var(--thumb);border-radius:8px;background:var(--bg);overflow:hidden;display:grid;place-items:center}
+.thumb span{font:800 calc(18px * var(--ts)) var(--display);color:var(--muted)}
 .thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}
-.add{width:40px;height:40px;border-radius:50%;border:2px solid var(--ink);font-size:22px;line-height:1;text-align:center}
-.add.on{background:var(--done);border-color:var(--done);color:#fff;font-size:18px}
+.add{width:40px;height:40px;border-radius:50%;border:2px solid var(--ink);font-size:calc(22px * var(--ts));line-height:1;text-align:center}
+.add.on{background:var(--done);border-color:var(--done);color:#fff;font-size:calc(18px * var(--ts))}
 .stage{position:relative;aspect-ratio:4/3;background:#fff;border-radius:14px;overflow:hidden;margin:4px 0 8px}
 .stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 .stage .f1{animation:frame 2.4s ease-in-out infinite}
@@ -2497,10 +2801,10 @@ p{margin:0 0 10px}
 @media (prefers-reduced-motion:reduce){.stage[data-frame="play"] .f1{animation:none;opacity:0}}
 .noimg{position:absolute;inset:0;display:grid;place-items:center;padding:20px;text-align:center;color:#5A636C;margin:0}
 .seg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface);border-radius:10px;padding:3px;margin-bottom:12px}
-.seg button{padding:7px 0;border-radius:8px;font-size:14px;font-weight:600;text-align:center;color:var(--muted)}
+.seg button{padding:7px 0;border-radius:8px;font-size:calc(14px * var(--ts));font-weight:600;text-align:center;color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
 .tags{display:flex;flex-wrap:wrap;gap:6px}
-.tag{display:inline-flex;align-items:center;gap:6px;font-size:14px;padding:4px 10px;border-radius:6px;background:var(--surface)}
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:calc(14px * var(--ts));padding:4px 10px;border-radius:6px;background:var(--surface)}
 .tags.quiet .tag{background:transparent;border:1px solid var(--line)}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--pc);box-shadow:inset 0 0 0 1px rgba(0,0,0,.25)}
 .steps{padding-left:22px;margin:0}.steps li{margin:0 0 10px;padding-left:4px}
@@ -2508,20 +2812,20 @@ p{margin:0 0 10px}
 .spark polyline{fill:none;stroke:var(--accent);stroke-width:2.5;vector-effect:non-scaling-stroke}
 .spark circle{fill:var(--accent)}
 .cta{margin-top:18px}
-.ver{font-size:12px;color:var(--muted);margin:14px 0 0;opacity:.8}
+.ver{font-size:calc(12px * var(--ts));color:var(--muted);margin:14px 0 0;opacity:.8}
 #upd{position:fixed;inset:0;z-index:48;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}
 .updp{width:100%;max-width:640px;background:var(--surface);color:var(--ink);border-radius:22px 22px 0 0;padding:20px 18px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;
   box-shadow:0 -8px 30px rgba(0,0,0,.25)}
-.updtag{align-self:flex-start;background:var(--accent);color:#fff;font-size:12px;font-weight:800;padding:4px 10px;border-radius:999px}
-.updt{margin:6px 0 0;font:800 26px/1.1 var(--display)}
-.upds{color:var(--muted);font-size:14px}
+.updtag{align-self:flex-start;background:var(--accent);color:#fff;font-size:calc(12px * var(--ts));font-weight:800;padding:4px 10px;border-radius:999px}
+.updt{margin:6px 0 0;font:800 calc(26px * var(--ts))/1.1 var(--display)}
+.upds{color:var(--muted);font-size:calc(14px * var(--ts))}
 .updl{display:flex;flex-direction:column;gap:10px;margin:8px 0 6px}
 .updi{display:flex;gap:12px;align-items:flex-start;background:var(--bg);border-radius:14px;padding:12px}
-.updic{font-size:24px;line-height:1.1;flex:none}
-.updi b{display:block;font-size:15px}
-.updi span{display:block;color:var(--muted);font-size:13px;line-height:1.35;margin-top:2px}
-.updmsg{font-size:14px}.updmsg:empty{display:none}
-.updgo{padding:14px;border-radius:12px;background:var(--accent);color:#fff;font:700 19px/1 var(--display);text-align:center}
+.updic{font-size:calc(24px * var(--ts));line-height:1.1;flex:none}
+.updi b{display:block;font-size:calc(15px * var(--ts))}
+.updi span{display:block;color:var(--muted);font-size:calc(13px * var(--ts));line-height:1.35;margin-top:2px}
+.updmsg{font-size:calc(14px * var(--ts))}.updmsg:empty{display:none}
+.updgo{padding:14px;border-radius:12px;background:var(--accent);color:#fff;font:700 calc(19px * var(--ts))/1 var(--display);text-align:center}
 .updgo:disabled{opacity:.6}
 .updlater{padding:12px;border-radius:12px;background:var(--bg);color:var(--ink);font-weight:600;text-align:center}
 .updlater[hidden]{display:none}
@@ -2530,13 +2834,13 @@ p{margin:0 0 10px}
 .seg2{grid-template-columns:repeat(2,1fr)}
 .cal{background:var(--surface);border-radius:14px;padding:10px 8px 8px}
 .cal-head{display:flex;align-items:center;justify-content:space-between;padding:0 4px 8px}
-.cal-head b{font:800 20px/1 var(--display)}
-.cal-nav{width:40px;height:36px;font-size:24px;line-height:1;text-align:center;color:var(--accent);border-radius:8px}
+.cal-head b{font:800 calc(20px * var(--ts))/1 var(--display)}
+.cal-nav{width:40px;height:36px;font-size:calc(24px * var(--ts));line-height:1;text-align:center;color:var(--accent);border-radius:8px}
 .cal-nav:disabled{opacity:.25}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
-.cal-wd{text-align:center;font-size:12px;font-weight:700;color:var(--muted);padding-bottom:4px}
+.cal-wd{text-align:center;font-size:calc(12px * var(--ts));font-weight:700;color:var(--muted);padding-bottom:4px}
 .cd{position:relative;aspect-ratio:1/1.08;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:5px;gap:3px;text-align:center}
-.cd .cd-n{font-size:14px;font-weight:600;color:var(--muted);line-height:1}
+.cd .cd-n{font-size:calc(14px * var(--ts));font-weight:600;color:var(--muted);line-height:1}
 .cd.has{background:var(--bg)}
 .cd.has .cd-n{color:var(--ink);font-weight:800}
 .cd.today .cd-n{color:var(--accent)}
@@ -2545,23 +2849,23 @@ p{margin:0 0 10px}
 .cd-dots{display:flex;flex-wrap:wrap;justify-content:center;gap:2px;max-width:30px}
 .cd-dots .dot{width:8px;height:8px}
 .cd.sel .dot{box-shadow:0 0 0 1px var(--bg)}
-.cd-more{font-size:10px;font-weight:700;color:var(--muted);line-height:8px}
+.cd-more{font-size:calc(10px * var(--ts));font-weight:700;color:var(--muted);line-height:8px}
 .cd:disabled{cursor:default}
 .month-sum{margin:12px 2px 6px}
 .legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin:4px 2px 6px}
-.lg{display:inline-flex;align-items:center;gap:5px;font-size:13px}
+.lg{display:inline-flex;align-items:center;gap:5px;font-size:calc(13px * var(--ts))}
 .lg b{font-variant-numeric:tabular-nums}
 .lg.zero{opacity:.45}
 .weeks{width:100%;height:auto;display:block;background:var(--surface);border-radius:14px;padding:8px 6px 2px}
 .weeks .gl{stroke:var(--line);stroke-width:1}
-.weeks .ax{font:10px var(--body);fill:var(--muted)}
+.weeks .ax{font:calc(10px * var(--ts)) var(--body);fill:var(--muted)}
 .weeks rect{stroke:rgba(0,0,0,.18);stroke-width:.5}
 .f-red{fill:var(--p-red)}.f-blue{fill:var(--p-blue)}.f-yellow{fill:var(--p-yellow)}.f-green{fill:var(--p-green)}.f-white{fill:var(--p-white)}.f-steel{fill:var(--p-steel)}.f-iron{fill:var(--p-iron)}
 @media (prefers-color-scheme:dark){.weeks rect{stroke:rgba(255,255,255,.22)}}
 .balance{background:var(--surface);border-radius:14px;padding:6px 12px}
 .bal{display:grid;grid-template-columns:92px 1fr 26px 74px;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line)}
 .bal:first-child{border-top:0}
-.bal-name{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600}
+.bal-name{display:flex;align-items:center;gap:6px;font-size:calc(14px * var(--ts));font-weight:600}
 .bal-bar{height:10px;border-radius:5px;background:var(--bg);overflow:hidden}
 .bal-bar i{display:block;height:100%;border-radius:5px;background:var(--pc);box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}
 .bal-n{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
@@ -2577,14 +2881,14 @@ p{margin:0 0 10px}
 .st-k{color:#FC4C02;margin:0 0 8px}
 .st-post{background:var(--surface);border-radius:10px;padding:10px 12px;margin-bottom:8px}
 .st-title{font-weight:800;margin:0 0 4px}
-.st-desc{white-space:pre-line;margin:0;font-size:15px}
+.st-desc{white-space:pre-line;margin:0;font-size:calc(15px * var(--ts))}
 .st-actions{display:flex;flex-wrap:wrap;gap:6px}
 textarea.search{resize:none;line-height:1.4}
 .secondary.ai{border-color:var(--accent);color:var(--accent);font-weight:700}
 .busy{animation:pulse 1.2s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.55}}
 @media (prefers-reduced-motion:reduce){.busy{animation:none}}
-.kicker{font-size:13px;font-weight:700;color:var(--accent);margin:8px 0 0}
+.kicker{font-size:calc(13px * var(--ts));font-weight:700;color:var(--accent);margin:8px 0 0}
 .keybox{background:var(--surface);border-radius:14px;padding:14px;margin:18px 0 4px;border:1.5px dashed var(--accent)}
 .keyrow{display:flex;gap:8px;align-items:center}
 .keyrow input{flex:1;min-width:0;font:16px var(--body);padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);-webkit-appearance:none}
@@ -2598,63 +2902,133 @@ textarea.search{resize:none;line-height:1.4}
 .ai-btn{display:block;width:100%;margin:12px 0 4px;padding:12px;border-radius:12px;border:1.5px solid var(--accent);color:var(--accent);font-weight:700;text-align:center}
 .coach{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:var(--bg)}
 .coach .kicker{margin:0 0 2px}
-.coach-h{font:800 20px/1.2 var(--display);margin:0 0 6px}
-.coach h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 4px}
+.coach-h{font:800 calc(20px * var(--ts))/1.2 var(--display);margin:0 0 6px}
+.coach h3{font-size:calc(13px * var(--ts));text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 4px}
 .coach ul{margin:0;padding-left:18px}.coach li{margin:0 0 4px}
 .focus-row{padding:6px 0;border-top:1px solid var(--line)}
 .focus-top{display:flex;align-items:center;gap:8px}
 .focus-row p{margin:2px 0 0 18px}
-.int{margin-left:auto;font-size:13px;font-weight:700;padding:2px 8px;border-radius:6px}
+.int{margin-left:auto;font-size:calc(13px * var(--ts));font-weight:700;padding:2px 8px;border-radius:6px}
 .int-light{background:rgba(46,139,62,.16);color:var(--done)}
 .int-moderate{background:rgba(242,183,5,.22);color:var(--ink)}
 .int-hard{background:rgba(200,16,46,.15);color:var(--accent)}
-.spark-mark{font-style:normal;font-size:14px}
+.spark-mark{font-style:normal;font-size:calc(14px * var(--ts))}
 .row{flex-wrap:wrap;gap:0 18px}
-.note{font-size:14px;color:var(--muted);border-left:3px solid var(--accent);padding:2px 0 2px 10px;margin:4px 0 0}
+.note{font-size:calc(14px * var(--ts));color:var(--muted);border-left:3px solid var(--accent);padding:2px 0 2px 10px;margin:4px 0 0}
 .disclaimer{background:var(--surface);border-radius:14px;padding:16px 16px 6px;margin:8px 0 6px}
 .disclaimer p{margin:0 0 12px}
 .empty{padding:30px 0}.empty-line{padding:20px 4px;color:var(--muted)}
 .entry{background:var(--surface);border-radius:14px;padding:12px 14px 4px;margin:0 0 12px}
 .entry-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.entry-name{font:800 21px/1.1 var(--display);padding:4px 0;color:var(--ink)}
+.entry-name{font:800 calc(21px * var(--ts))/1.1 var(--display);padding:4px 0;color:var(--ink)}
 .set-row{display:grid;grid-template-columns:26px 1fr 1fr 44px 28px;gap:8px;align-items:center;margin-top:8px}
-.set-row.head{font-size:12px;color:var(--muted);margin-top:4px}
+.set-row.head{font-size:calc(12px * var(--ts));color:var(--muted);margin-top:4px}
 .set-row .n{font-weight:700;color:var(--muted);text-align:center}
 .set-row input{width:100%;font:600 17px var(--body);padding:9px 6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);text-align:center;-webkit-appearance:none}
 .tick{height:40px;border-radius:8px;border:2px solid var(--line);font-weight:800;text-align:center;color:var(--muted)}
 .set-row.done .tick{background:var(--done);border-color:var(--done);color:#fff}
 .set-row.done input{border-color:transparent;background:transparent}
-.x{height:40px;color:var(--muted);font-size:20px;text-align:center}
+.x{height:40px;color:var(--muted);font-size:calc(20px * var(--ts));text-align:center}
 #rest{position:fixed;left:12px;right:12px;bottom:calc(68px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;gap:14px;
   padding:10px 16px;border-radius:14px;background:var(--ink);color:var(--bg);z-index:19;overflow:hidden;max-width:616px;margin:0 auto}
 #rest[hidden]{display:none}
 .rest-fill{position:absolute;inset:0 auto 0 0;width:calc(var(--p,0) * 100%);background:currentColor;opacity:.13;transition:width .25s linear}
-.rest-label{font-size:14px;opacity:.75}
-.rest-time{font:800 28px/1 var(--display);font-variant-numeric:tabular-nums;margin-right:auto;min-width:3ch}
-#rest button{font-weight:700;font-size:15px;padding:6px 0;position:relative}
+.rest-label{font-size:calc(14px * var(--ts));opacity:.75}
+.rest-time{font:800 calc(28px * var(--ts))/1 var(--display);font-variant-numeric:tabular-nums;margin-right:auto;min-width:3ch}
+#rest button{font-weight:700;font-size:calc(15px * var(--ts));padding:6px 0;position:relative}
 #rest.go{background:var(--done);color:#fff}
 #toast{position:fixed;left:50%;top:calc(var(--band,44px) + 8px);transform:translate(-50%,-8px);max-width:88vw;padding:8px 16px;border-radius:12px;
-  background:var(--ink);color:var(--bg);font-size:15px;font-weight:600;z-index:30;pointer-events:none;text-align:center;
+  background:var(--ink);color:var(--bg);font-size:calc(15px * var(--ts));font-weight:600;z-index:30;pointer-events:none;text-align:center;
   opacity:0;visibility:hidden;transition:opacity .2s ease,transform .2s ease,visibility .2s}
 #toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}#toast.err{background:var(--accent);color:#fff}
 #tabs{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface);border-top:1px solid var(--line);
   padding-bottom:env(safe-area-inset-bottom,0px);z-index:20}
-#tabs button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 0 10px;font:600 12px var(--body);color:var(--muted)}
+#tabs button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 0 10px;font:600 calc(12px * var(--ts)) var(--body);color:var(--muted)}
 #tabs button[aria-current="page"]{color:var(--ink)}
 #tabs svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .sess{background:var(--surface);border-radius:14px;margin:0 0 10px;overflow:hidden}
 .sess-head{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;padding:13px 14px}
-.sess-head b{display:block;font:800 19px/1.15 var(--display)}
+.sess-head b{display:block;font:800 calc(19px * var(--ts))/1.15 var(--display)}
 .dots{display:flex;gap:4px;flex:none}
 .sess-body{padding:0 14px 6px;border-top:1px solid var(--line)}
 .sess-ex{padding:10px 0 8px;border-bottom:1px solid var(--line)}
-.sess-ex .entry-name{font-size:18px;display:block}
+.sess-ex .entry-name{font-size:calc(18px * var(--ts));display:block}
 .row{display:flex;justify-content:space-between}
 @media (min-width:520px){.rack{grid-template-columns:repeat(4,1fr)}}
+
+/* Tiny: one line per exercise without the photo, one line per workout in History; logging sets stays full size */
+body.d-tiny .thumb{display:none}
+body.d-tiny .ex{column-gap:0}
+body.d-tiny .ex-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.d-tiny .ex-meta{display:none}
+body.d-tiny .sess-head{padding:8px 14px}
+body.d-tiny .sess-head b{display:inline;font-size:calc(16px * var(--ts));margin-right:6px}
+body.d-tiny .sess-head>span:first-child{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.d-tiny .sess-head>span:first-child>span{display:inline}
+body.d-compact .sess-head{padding:10px 14px}
+.brand .icon{width:40px;height:40px;border-radius:20px;display:grid;place-items:center;background:var(--sheet);border:1px solid var(--rule);color:var(--ink);flex:none;margin-left:6px}
+.brand .icon svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* Settings sheet (scoped: the app already uses .seg, .chip and .row) */
+#cfgsheet{position:fixed;inset:0;z-index:50;background:var(--paper);color:var(--ink);transform:translateY(102%);visibility:hidden;transition:transform .28s ease,visibility 0s linear .28s;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;text-align:left}
+#cfgsheet.open{transform:none;visibility:visible;transition:transform .28s ease}
+#cfgsheet button{font:inherit;color:inherit;background:none;border:0;border-radius:0;padding:0;font-weight:inherit;cursor:pointer;text-align:inherit}
+#cfgsheet .sh-head{position:sticky;top:0;z-index:2;background:var(--paper);display:flex;justify-content:space-between;align-items:center;padding:calc(env(safe-area-inset-top) + 14px) 18px 12px;border-bottom:1px solid var(--rule)}
+#cfgsheet .sh-head h2{font:700 calc(24px * var(--ts))/1 var(--display);margin:0}
+#cfgsheet .sh-body{padding:16px 18px calc(env(safe-area-inset-bottom) + 40px);max-width:680px;margin:0 auto}
+#cfgsheet .link{color:var(--signal);font-weight:600;font-size:16px}
+#cfgsheet .link.small{font-size:calc(14px * var(--ts))}
+#cfgsheet .hint{font-size:calc(13px * var(--ts));color:var(--muted);margin:8px 2px 0}
+#cfgsheet .muted{color:var(--muted)}
+#cfgsheet .sec{display:block;font:700 calc(17px * var(--ts))/1.2 var(--display);color:var(--ink);margin:26px 0 6px}
+#cfgsheet .srow{display:flex;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid var(--rule)}
+#cfgsheet .grow{flex:1;min-width:0}
+#cfgsheet .grow b{display:block;font-weight:600}
+#cfgsheet .grow small{display:block;font-size:calc(13px * var(--ts));color:var(--ink-2)}
+#cfgsheet .switch{width:46px;height:28px;border-radius:14px;background:var(--rule);position:relative;flex:none;transition:background .2s}
+#cfgsheet .switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:11px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .2s}
+#cfgsheet .switch.on{background:var(--signal)}
+#cfgsheet .switch.on::after{transform:translateX(18px)}
+#cfgsheet .sm{font-size:calc(13px * var(--ts));padding:6px 11px;border-radius:8px;border:1px solid var(--rule);background:var(--sheet);white-space:nowrap;flex:none}
+#cfgsheet .danger{color:var(--danger)}
+#cfgsheet .danger.armed{background:var(--danger);color:#fff;border-color:var(--danger)}
+#cfgsheet .seg{display:flex;flex:none;gap:0;padding:0;border:1px solid var(--rule);border-radius:9px;overflow:hidden;background:var(--sheet)}
+#cfgsheet .seg button{font-size:calc(12.5px * var(--ts));padding:6px 10px;color:var(--ink-2);white-space:nowrap}
+#cfgsheet .seg button.on{background:var(--ink);color:var(--paper);font-weight:600}
+#cfgsheet .seg.wide button{flex:1;text-align:center;padding:9px 4px;font-size:calc(13.5px * var(--ts))}
+#cfgsheet .lk-row{margin:10px 0 14px}
+#cfgsheet .lk-l{display:block;font-size:calc(13px * var(--ts));font-weight:600;color:var(--ink-2);margin-bottom:6px}
+#cfgsheet .sws{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;padding:3px 3px 2px}
+#cfgsheet .sws::-webkit-scrollbar{display:none}
+#cfgsheet .sw{display:flex;flex-direction:column;align-items:center;gap:5px;flex:none}
+#cfgsheet .sw .prev{position:relative;width:50px;height:50px;border-radius:13px;display:grid;place-items:center;border:1px solid rgba(127,127,127,.35);font:700 18px/1 var(--display)}
+#cfgsheet .sw .prev i{position:absolute;right:6px;bottom:6px;width:9px;height:9px;border-radius:5px}
+#cfgsheet .sw.on .prev{outline:2.5px solid var(--signal);outline-offset:2px}
+#cfgsheet .sw small{font-size:12px;color:var(--ink-2)}
+#cfgsheet .sw.on small{color:var(--ink);font-weight:600}
+#cfgsheet .cfg{padding:12px 0;border-bottom:1px solid var(--rule)}
+#cfgsheet .cfg.ch .cfg-h b::after{content:"";display:inline-block;width:7px;height:7px;border-radius:4px;background:var(--signal);margin-left:7px;vertical-align:2px}
+#cfgsheet .cfg-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+#cfgsheet .cfg-h b{font-weight:600}
+#cfgsheet .cfg small{display:block;font-size:calc(13px * var(--ts));margin-top:2px}
+#cfgsheet .stepper{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
+#cfgsheet .stepper button{width:38px;height:36px;border-radius:9px;border:1px solid var(--rule);background:var(--sheet);font-size:20px;font-weight:600;text-align:center}
+#cfgsheet .stepper button[disabled]{opacity:.35}
+#cfgsheet .stepper input{width:86px;text-align:center;font:600 16px var(--sans);padding:7px 6px;border-radius:9px;border:1px solid var(--rule);background:var(--paper);color:var(--ink)}
+#cfgsheet .stepper .unit{font-size:calc(14px * var(--ts));color:var(--ink-2);min-width:2.5em}
+#cfgsheet .stepper .range{flex-basis:100%;font-size:calc(12px * var(--ts));color:var(--muted)}
+#cfgsheet .cfgin.wide,#cfgsheet .cfgsel{display:block;width:100%;margin-top:8px;font:16px/1.45 var(--sans);padding:9px 11px;border-radius:9px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);-webkit-appearance:none;appearance:none}
+#cfgsheet textarea.cfgsel{resize:none}
+#cfgsheet .cfgin:focus,#cfgsheet .cfgsel:focus{outline:2px solid var(--signal);outline-offset:-1px}
+#cfgsheet .cfg-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-top:18px}
+#cfgsheet .note{font-size:12.5px;color:var(--muted)}
+#cfgsheet .srow.bp{width:100%;text-align:left}
+#cfgsheet .chev{flex:none;color:var(--muted);font-size:calc(20px * var(--ts));line-height:1}
+#cfgsheet input{-webkit-user-select:text;user-select:text}
 `;
 
 // ---------------------------------------------------------------- main
 async function main() {
+  await loadSettings();   // before every branch: the app and the widget use the saved choices
   aiMigrate(["go2fgym-openai-key"]);   // 1.5.x kept one OpenAI key under another name
   if (config.runsInWidget) await runWidget();
   else await runApp();
