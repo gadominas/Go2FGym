@@ -71,18 +71,20 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
 
 ## AI coach (optional)
 
-Uses the OpenAI API with **your own API key**. Everything else in the app works without it.
+Uses Claude or OpenAI with **your own API key**. Everything else in the app works without it, and the AI buttons stay hidden until you add a key.
 
-1. Create a key at [platform.openai.com](https://platform.openai.com/api-keys).
-2. In Go2FGym tap **✨ Build a workout with AI**, paste the key and tap **Save**. It's stored in the iPhone's Keychain and only sent to OpenAI.
+1. Create a key at [console.anthropic.com](https://console.anthropic.com/settings/keys) (Claude) or [platform.openai.com](https://platform.openai.com/api-keys) (OpenAI).
+2. In Go2FGym tap **AI settings** at the bottom of the Train tab, then **Add key**. The key is typed into a native iOS prompt, stored in the iPhone's Keychain and only sent to its own provider. Here you can also pick any model your key can use, test the connection, and see your token usage per day, feature and model.
 3. Pick what to train, your equipment, 20 to 60 minutes and Easy, Moderate or Hard, add a note if you like ("lower back is sore"), and tap **Build workout**.
 4. Check the plan, then **Start this workout**. After **Finish workout** the AI coach reviews it and writes a Strava title and description. Both are saved with the workout in **History**.
 
-Without a key, the Strava post's **Neutral** tone still works as a basic summary built on the phone.
+Without a key, the Strava post's **Neutral** tone still works as a basic summary built on the phone, labelled “Template — no AI”. Everything the AI writes is labelled with the provider that wrote it. To stop the automatic review and Strava post after each workout, turn off the switch under **AI settings › What AI does**.
 
 The AI only chooses exercises from your library, keeps weights at or close to what you lifted last time, and avoids loading anything you mention in the note. Check every weight anyway: it can be wrong.
 
-**What's sent to OpenAI:** exercise names and muscles, your sets, weights and dates, the options you chose and your note. No name, account or location. Requests are billed to your OpenAI account. Remove the key under **Train › AI key**.
+**What's sent to the AI provider in use:** exercise names and muscles, your sets, weights and dates, the options you chose and your note. No name, account or location. Requests are billed to your own Claude or OpenAI account. Remove a key under **AI settings**.
+
+This app follows the shared [app blueprints](https://github.com/gadominas/app-blueprints) (see [docs/BLUEPRINTS.md](docs/BLUEPRINTS.md)).
 
 ## Updates and what's new
 
@@ -123,8 +125,6 @@ Settings live in the `CONFIG` block at the top of `Go2FGym.js`:
 | `skipCategories` | strongman, olympic weightlifting | Exercise types hidden from the library |
 | `icloudBackup` | `true` | Mirror history to iCloud Drive › Scriptable › Go2FGym-backup |
 | `checkUpdates` | `true` | Offer new versions from GitHub; **Later** waits two days |
-| `ai.model` | `"gpt-5.4-mini"` | OpenAI model for the AI coach |
-| `ai.reasoning` | `"low"` | `"low"` is quick; `"medium"` plans a bit more carefully but slower |
 | `ai.autoAnalyze` | `true` | Analyze each workout right after you finish it |
 | `ai.autoStrava` | `true` | Also write a Strava title and description after each workout |
 | `ai.stravaMode` | `"funny"` | Default Strava tone: `"serious"`, `"funny"` or `"neutral"` |
@@ -134,7 +134,7 @@ After changing `equipment`, tap **Update library** to download the extra photos.
 ## Your data
 
 - **Everything stays on your phone.** No account, no server, no tracking.
-- Network use: downloading the exercise library from GitHub and, only if you add a key, the AI coach requests to OpenAI described above.
+- Network use: downloading the exercise library from GitHub and, only if you add a key, the AI coach requests to Claude or OpenAI described above.
 - History is a plain JSON file in Scriptable's folder, with a copy in iCloud Drive if enabled.
 
 ## Credits

@@ -32,9 +32,8 @@ const CONFIG = {
   icloudBackup: true, // mirror history.json to iCloud Drive/Scriptable/Go2FGym-backup
   checkUpdates: true, // offer new versions from GitHub (asks again 2 days after "Later")
   ai: {
-    // ✨ Optional AI coach via the OpenAI API (your own key, stored in the iOS Keychain).
-    model: "gpt-5.4-mini",
-    reasoning: "low", // "low" is quick; "medium" plans a little more carefully but slower
+    // ✨ Optional AI coach with Claude or OpenAI: add your own key under AI settings (Train tab, bottom).
+    // The switch in AI settings › What AI does turns both "after each workout" jobs below on or off.
     autoAnalyze: true, // analyze each workout right after you finish it (needs a key)
     autoStrava: true, // also write a Strava title and description after each workout
     stravaMode: "funny", // default tone for Strava posts: "serious", "funny" or "neutral"
@@ -43,7 +42,7 @@ const CONFIG = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -68,7 +67,6 @@ for (const d of [ROOT, IMG]) if (!fm.fileExists(d)) fm.createDirectory(d, true);
 
 // Bump when the disclaimer text changes materially, so users accept it again.
 const DISCLAIMER_VERSION = 2;
-const KC_AI_KEY = "go2fgym-openai-key";
 
 const J = (v) => JSON.stringify(v).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 const sleep = (ms) => new Promise((r) => Timer.schedule(ms, false, r));
@@ -304,39 +302,218 @@ async function applyUpdate(info) {
   return m[1]; // the version now installed
 }
 
-// ---------------------------------------------------------------- AI (OpenAI Responses API)
-// Generic proxy: the web UI builds the prompt and schema; the key never leaves Scriptable.
-async function openai(p) {
-  if (!Keychain.contains(KC_AI_KEY)) return { needKey: true };
-  const req = new Request("https://api.openai.com/v1/responses");
-  req.method = "POST";
-  req.timeoutInterval = 90;
-  req.headers = { Authorization: `Bearer ${Keychain.get(KC_AI_KEY)}`, "Content-Type": "application/json" };
-  req.body = JSON.stringify({
-    model: CONFIG.ai.model,
-    instructions: p.instructions,
-    input: p.input,
-    reasoning: { effort: CONFIG.ai.reasoning },
-    text: { format: { type: "json_schema", name: p.name, strict: true, schema: p.schema } },
-  });
-  let res = null;
-  try {
-    res = await req.loadJSON();
-  } catch (e) {
-    const code0 = req.response && req.response.statusCode;
-    if (!code0) throw new Error("No connection to OpenAI. Check your internet and try again.");
+// ─────────────── AI configuration ───────────────
+// Follows github.com/gadominas/app-blueprints · blueprints/ai-configuration.md (reference: BlogPulse.js).
+// Every AI request goes through aiCall. Keys live in the iOS Keychain only; the page sees them masked.
+
+// AI providers. Keychain names are unique per app; models are defaults until the user picks one.
+const AI = {
+  anthropic: { key: "GO2FGYM_ANTHROPIC_KEY", model: "claude-haiku-5-5" },
+  openai:    { key: "GO2FGYM_OPENAI_KEY",    model: "gpt-5.4-mini" },
+};
+const PROVIDERS = { anthropic: "Claude", openai: "OpenAI" };
+
+// AI settings and token usage live in their own small JSON files on this iPhone (never the keys).
+const aiFm = FileManager.local();
+const aiPath = name => aiFm.joinPath(aiFm.documentsDirectory(), "go2fgym-" + name + ".json");
+function aiLoad(name, fallback) {
+  try { const p = aiPath(name); if (aiFm.fileExists(p)) return JSON.parse(aiFm.readString(p)); }
+  catch (e) { console.log("AI: couldn't read " + name + ": " + e); }
+  return fallback;
+}
+function aiWrite(name, data) {
+  try { aiFm.writeString(aiPath(name), JSON.stringify(data)); } catch (e) { console.log("AI: couldn't save " + name + ": " + e); }
+}
+const aiSettings = Object.assign({
+  aiProvider: "anthropic",   // the provider marked "In use"
+  ai: true,                  // background AI jobs on/off ("What AI does")
+  // model:  { anthropic: "…", openai: "…" }   set when the user picks a model
+  // models: { anthropic: { at, list: [{ id, name }] }, openai: … }   cached model lists
+}, aiLoad("ai-settings", {}));
+const saveAiSettings = () => aiWrite("ai-settings", aiSettings);
+
+const keyFor   = p => Keychain.contains(AI[p].key) ? Keychain.get(AI[p].key) : null;
+const aiKey    = () => keyFor(aiSettings.aiProvider);   // the key of the provider in use
+const modelFor = p => (aiSettings.model && aiSettings.model[p]) || AI[p].model;
+const maskKey  = k => k ? (k.length > 14 ? k.slice(0, 7) + "…" + k.slice(-4) : "…" + k.slice(-4)) : null;
+
+// Run once at start: move a key an earlier version stored elsewhere, then use whichever provider has a key.
+function aiMigrate(oldKeyNames, oldModel) {
+  for (const old of oldKeyNames || []) {
+    if (!Keychain.contains(old)) continue;
+    if (!Keychain.contains(AI.openai.key)) Keychain.set(AI.openai.key, Keychain.get(old));
+    Keychain.remove(old);
+    if (!keyFor("anthropic")) aiSettings.aiProvider = "openai";   // use the key that now exists
   }
-  const code = req.response && req.response.statusCode;
-  if (code === 401) {
-    Keychain.remove(KC_AI_KEY);
-    return { needKey: true };
+  if (oldModel && !(aiSettings.model && aiSettings.model.openai)) aiSettings.model = Object.assign({}, aiSettings.model, { openai: oldModel });
+  if (!PROVIDERS[aiSettings.aiProvider]) aiSettings.aiProvider = "anthropic";
+  if (!aiKey()) { const other = Object.keys(PROVIDERS).find(p => keyFor(p)); if (other) aiSettings.aiProvider = other; }
+  saveAiSettings();
+}
+
+async function askKey(p) {
+  const cur = keyFor(p);
+  const al = new Alert();
+  al.title = `${PROVIDERS[p]} API key`;
+  al.message = cur ? `The saved key ends in …${cur.slice(-4)}. Paste a new key to replace it.`
+                   : "Paste your API key. It's stored in the iOS Keychain on this device only.";
+  al.addSecureTextField(p === "openai" ? "sk-…" : "sk-ant-…", "");
+  al.addAction("Save key");
+  al.addCancelAction("Cancel");
+  if (await al.present() !== 0) return false;
+  const v = al.textFieldValue(0).trim();
+  if (!v) return false;
+  Keychain.set(AI[p].key, v);
+  if (!aiKey()) aiSettings.aiProvider = p;   // first key saved: use that provider
+  return true;
+}
+
+function removeKey(p) {
+  if (Keychain.contains(AI[p].key)) Keychain.remove(AI[p].key);
+}
+
+// The only way the app calls AI. feature: a short tag for the usage table.
+// provider: defaults to the one in use; "Test connection" passes the card's provider.
+async function aiCall(system, user, maxTokens = 2500, feature = "other", provider = aiSettings.aiProvider) {
+  const key = keyFor(provider);
+  if (!key) throw new Error(`No ${PROVIDERS[provider]} key saved`);
+  const openai = provider === "openai", model = modelFor(provider);
+  const r = new Request(openai ? "https://api.openai.com/v1/chat/completions" : "https://api.anthropic.com/v1/messages");
+  r.method = "POST";
+  r.timeoutInterval = 90;
+  if (openai) {
+    r.headers = { "Authorization": "Bearer " + key, "Content-Type": "application/json" };
+    r.body = JSON.stringify({ model, messages: [{ role: "system", content: system }, { role: "user", content: user }] });
+  } else {
+    r.headers = { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" };
+    r.body = JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] });
   }
-  if (code >= 400 || !res) throw new Error((res && res.error && res.error.message) || `OpenAI answered HTTP ${code}`);
-  let text = res.output_text || "";
-  if (!text && Array.isArray(res.output))
-    text = res.output.flatMap((o) => o.content || []).filter((c) => c.type === "output_text").map((c) => c.text).join("");
+  const j = await r.loadJSON();
+  if (j.error) throw new Error(j.error.message || "AI request failed");
+  const u = j.usage || {};
+  recordUsage(provider, model, feature,
+    openai ? (u.prompt_tokens || 0) : (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0),
+    openai ? (u.completion_tokens || 0) : (u.output_tokens || 0));
+  return openai ? ((j.choices && j.choices[0] && j.choices[0].message.content) || "")
+                : (j.content || []).map(c => c.text || "").join("");
+}
+
+// For prompts that ask for JSON: tolerate code fences and stray text around it.
+function parseJSON(txt) {
+  const s = String(txt).replace(/```json|```/g, "").trim();
+  const a = s.search(/[\[{]/), b = Math.max(s.lastIndexOf("}"), s.lastIndexOf("]"));
+  return JSON.parse(s.slice(a, b + 1));
+}
+
+// Token usage, counted from what the provider reports, per provider, model, feature and local day.
+let usage = aiLoad("usage", { since: Date.now(), p: {} });
+const aiDayKey = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+function recordUsage(provider, model, feature, tin, tout) {
+  const P = usage.p[provider] = usage.p[provider] || { calls: 0, in: 0, out: 0, models: {}, features: {}, days: {} };
+  const b = (o, k) => o[k] = o[k] || { calls: 0, in: 0, out: 0 };
+  for (const x of [P, b(P.models, model), b(P.features, feature), b(P.days, aiDayKey())]) {
+    x.calls++; x.in += tin; x.out += tout;
+  }
+  const days = Object.keys(P.days).sort();
+  while (days.length > 400) delete P.days[days.shift()];   // keep about 13 months of days
+  aiWrite("usage", usage);   // save after every call: the app can be closed at any moment
+}
+
+function resetUsage() { usage = { since: Date.now(), p: {} }; aiWrite("usage", usage); }
+
+// The models the user's own key can call, newest first; cached so the menu works offline.
+async function fetchModels(p) {
+  const key = keyFor(p);
+  if (!key) throw new Error(`Add a ${PROVIDERS[p]} key first`);
+  const r = new Request(p === "openai" ? "https://api.openai.com/v1/models" : "https://api.anthropic.com/v1/models?limit=100");
+  r.headers = p === "openai" ? { "Authorization": "Bearer " + key } : { "x-api-key": key, "anthropic-version": "2023-06-01" };
+  r.timeoutInterval = 20;
+  const j = await r.loadJSON();
+  if (j.error) throw new Error(j.error.message || "Couldn't load models");
+  let list = (j.data || []).map(m => ({
+    id: m.id, name: m.display_name || m.id,
+    t: m.created_at ? Date.parse(m.created_at) : (m.created || 0) * 1000,
+  }));
+  // OpenAI lists every model the key can reach; keep only the ones that write text.
+  if (p === "openai") list = list.filter(m => /^(gpt-|o\d|chatgpt-)/.test(m.id)
+    && !/(audio|realtime|tts|transcribe|image|search|embedding|instruct|moderation)/.test(m.id));
+  list.sort((a, b) => b.t - a.t);
+  aiSettings.models = aiSettings.models || {};
+  aiSettings.models[p] = { at: Date.now(), list: list.map(m => ({ id: m.id, name: m.name })) };
+  saveAiSettings();
+  return list.length;
+}
+
+// Bridge actions from the AI settings sheet. Returns the toast to show ("" for none).
+const AI_ACTIONS = ["aistate", "aikey", "airm", "aiprov", "aimodels", "aimodel", "aitest", "usagereset", "aitoggle"];
+async function aiAction(head, m) {
+  const P = PROVIDERS[m.v] ? m.v : aiSettings.aiProvider;
+  let msg = "";
+  switch (head) {
+    case "aikey":
+      if (await askKey(P)) {
+        aiSettings.ai = true; saveAiSettings();
+        try { const n = await fetchModels(P); msg = `${PROVIDERS[P]} key saved — ${n} models available`; }
+        catch (e) { msg = `Key saved, but checking it failed: ${String(e.message || e).slice(0, 70)}`; }
+      }
+      break;
+    case "airm": removeKey(P); msg = `${PROVIDERS[P]} key removed`;
+      if (!aiKey()) { const other = Object.keys(PROVIDERS).find(p => keyFor(p)); if (other) aiSettings.aiProvider = other; }
+      break;
+    case "aiprov": if (PROVIDERS[m.v] && keyFor(m.v)) aiSettings.aiProvider = m.v; break;
+    case "aimodels":
+      try { const n = await fetchModels(P); msg = `${n} ${PROVIDERS[P]} models found`; }
+      catch (e) { msg = String(e.message || e).slice(0, 90); }
+      break;
+    case "aimodel":
+      if (PROVIDERS[m.p] && m.v) { aiSettings.model = aiSettings.model || {}; aiSettings.model[m.p] = m.v; msg = `${PROVIDERS[m.p]} now uses ${m.v}`; }
+      break;
+    case "aitest": {
+      const t0 = Date.now();
+      try {
+        await aiCall("Reply with the single word OK.", "Connection test.", 10, "test", P);
+        msg = `${PROVIDERS[P]} works — ${modelFor(P)} answered in ${((Date.now() - t0) / 1000).toFixed(1)} s`;
+      } catch (e) { msg = `${PROVIDERS[P]} test failed: ${String(e.message || e).slice(0, 80)}`; }
+      break;
+    }
+    case "usagereset": resetUsage(); msg = "Usage counters reset"; break;
+    case "aitoggle": aiSettings.ai = !aiSettings.ai; break;
+  }
+  saveAiSettings();
+  return msg;
+}
+
+// What the page gets. Keys appear only masked.
+function aiClientState() {
+  return {
+    provider: aiSettings.aiProvider,
+    keys:  Object.fromEntries(Object.keys(PROVIDERS).map(p => [p, maskKey(keyFor(p))])),
+    model: Object.fromEntries(Object.keys(PROVIDERS).map(p => [p, modelFor(p)])),
+    models: aiSettings.models || {}, usage, today: aiDayKey(),
+    ai: aiSettings.ai, hasKey: !!aiKey(),
+  };
+}
+// One-line status for the app's Settings row: "Claude — claude-haiku-5-5 — 12.4k tokens used".
+function aiStatusLine() {
+  if (!aiKey()) return "";
+  const P = usage.p[aiSettings.aiProvider];
+  return `${PROVIDERS[aiSettings.aiProvider]} — ${modelFor(aiSettings.aiProvider)}` +
+    (P && P.calls ? ` — ${aiFmtN(P.in + P.out)} tokens used` : "");
+}
+const aiFmtN = n => n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n);
+// ─────────────── end of AI configuration ───────────────
+
+// ---------------------------------------------------------------- AI coach
+// The web UI builds the prompt and JSON schema; the request goes through aiCall, so keys never leave Scriptable.
+async function aiCoach(p) {
+  if (!aiKey()) return { needKey: true };
+  const provider = aiSettings.aiProvider;
+  const system = `${p.instructions}\n\nReply with JSON only, no other text, matching this JSON schema:\n${JSON.stringify(p.schema)}`;
+  const text = await aiCall(system, p.input, 4000, p.name || "other");
   try {
-    return { data: JSON.parse(text) };
+    return { data: parseJSON(text), by: PROVIDERS[provider] };
   } catch (e) {
     throw new Error("The AI answer could not be read. Try again.");
   }
@@ -401,7 +578,7 @@ async function runApp() {
     lib: forWeb(lib),
     history,
     draft: readJSON(P.draft, null),
-    ai: { hasKey: Keychain.contains(KC_AI_KEY), autoAnalyze: CONFIG.ai.autoAnalyze, autoStrava: CONFIG.ai.autoStrava, stravaMode: CONFIG.ai.stravaMode },
+    ai: { hasKey: !!aiKey(), bg: aiSettings.ai, autoAnalyze: CONFIG.ai.autoAnalyze, autoStrava: CONFIG.ai.autoStrava, stravaMode: CONFIG.ai.stravaMode },
     meta: readJSON(P.meta, null),
     consent: readJSON(P.consent, null),
     version: VERSION,
@@ -419,6 +596,12 @@ async function runApp() {
 
   async function handle(m) {
     const p = m.payload || {};
+    if (AI_ACTIONS.includes(m.type)) {   // AI settings sheet (app-blueprints · ai-configuration)
+      const msg = await aiAction(m.type, p);
+      await js(`window.__aiState(${J(aiClientState())})`);
+      if (msg) await js(`window.__aiToast(${J(msg)})`);
+      return;
+    }
     switch (m.type) {
       case "images":
         for (const id of p.ids || []) {
@@ -435,20 +618,11 @@ async function runApp() {
       case "ai": {
         let out;
         try {
-          out = await openai(p);
+          out = await aiCoach(p);
         } catch (e) {
           out = { error: String((e && e.message) || e) };
         }
         await js(`HG.onAI(${J(p.rid)},${J(out)})`);
-        break;
-      }
-      case "setkey": {
-        const key = String(p.key || "").trim();
-        if (!/^sk-/.test(key)) await js(`HG.onKey(${J({ ok: false, msg: "That doesn't look like an OpenAI key. It starts with sk-." })})`);
-        else {
-          Keychain.set(KC_AI_KEY, key);
-          await js(`HG.onKey(${J({ ok: true })})`);
-        }
         break;
       }
       case "update-later":
@@ -472,10 +646,6 @@ async function runApp() {
       case "copy":
         Pasteboard.copyString(String(p.text || ""));
         await js(`HG.toast(${J(p.label ? `${p.label} copied` : "Copied")})`);
-        break;
-      case "delkey":
-        if (Keychain.contains(KC_AI_KEY)) Keychain.remove(KC_AI_KEY);
-        await js(`HG.onKey(${J({ ok: true, removed: true })})`);
         break;
       case "accept":
         writeJSON(P.consent, { version: p.version, acceptedAt: new Date().toISOString() });
@@ -640,7 +810,7 @@ function webApp() {
     consent: !!(BOOT.consent && BOOT.consent.version === CFG.disclaimerVersion),
     showDisclaimer: false,
     ai: {
-      hasKey: !!(BOOT.ai && BOOT.ai.hasKey), auto: !BOOT.ai || BOOT.ai.autoAnalyze !== false,
+      hasKey: !!(BOOT.ai && BOOT.ai.hasKey), bg: !BOOT.ai || BOOT.ai.bg !== false, auto: !BOOT.ai || BOOT.ai.autoAnalyze !== false,
       autoStrava: !BOOT.ai || BOOT.ai.autoStrava !== false,
       stravaMode: (BOOT.ai && ["serious", "funny", "neutral"].includes(BOOT.ai.stravaMode)) ? BOOT.ai.stravaMode : "funny",
     },
@@ -803,7 +973,7 @@ function webApp() {
     S.openSession = done.id;
     focusDay(done.start);
     render();
-    if (S.ai.hasKey && (S.ai.auto || S.ai.autoStrava)) {
+    if (S.ai.hasKey && S.ai.bg && (S.ai.auto || S.ai.autoStrava)) {
       toast(S.ai.auto ? "Workout saved. Your AI coach is reviewing it…" : "Workout saved");
       (async () => {
         if (S.ai.auto) await analyze(done.id);
@@ -853,6 +1023,108 @@ function webApp() {
     );
     els.forEach((el) => { if (!S.imgs[el.dataset.id]) io.observe(el); });
   }
+
+// ── AI settings sheet (app-blueprints · ai-configuration) ──
+  // Opened with window.__aiOpen(); the Scriptable side pushes state with window.__aiState(state).
+  var AIS=null, aiIsOpen=false, aiArmed=null, aiLoading={};
+  var AI_PN={ anthropic:'Claude', openai:'OpenAI' };
+  var AI_FEAT={"workout_plan": "Workout plans", "workout_review": "Workout reviews", "strava_post": "Strava posts", "test": "Connection tests", "other": "Other"};
+  var AI_JOBS=[{"title": "Coach after each workout", "text": "When you finish a workout, the AI coach reviews it and writes a Strava post. About two requests per workout."}];
+  function aiSend(act,data){ send(act,data); }
+  function aiEsc(t){ var d=document.createElement('div'); d.textContent=String(t==null?'':t); return d.innerHTML; }
+  function aiFmtN(n){ return n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e4?Math.round(n/1e3)+'k':n>=1e3?(n/1e3).toFixed(1)+'k':String(n); }
+  function aiRel(t){ var s=Math.max(0,Math.round((Date.now()-t)/1000)); if(s<60) return 'just now'; if(s<3600) return Math.round(s/60)+' min ago'; if(s<86400) return Math.round(s/3600)+' h ago'; return Math.round(s/86400)+' d ago'; }
+  function aiDayStr(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+  function aiArm(k){ aiArmed=k; renderAI(); setTimeout(function(){ if(aiArmed===k){ aiArmed=null; renderAI(); } },3500); }
+  function aiSheet(){
+    var el=document.getElementById('aisheet');
+    if(!el){
+      el=document.createElement('div'); el.id='aisheet'; el.setAttribute('role','dialog'); el.setAttribute('aria-label','AI settings');
+      document.body.appendChild(el);
+      el.addEventListener('click',aiClick);
+      el.addEventListener('change',function(e){ e.stopPropagation(); if(e.target.classList.contains('modelsel')) aiSend('aimodel',{p:e.target.getAttribute('data-p'),v:e.target.value}); });
+    }
+    return el;
+  }
+  window.__aiOpen=function(){ aiIsOpen=true; renderAI(); aiSend('aistate',{}); };
+  window.__aiState=function(s){ AIS=s; aiLoading={}; renderAI(); if(typeof window.__aiChanged==='function') window.__aiChanged(s); };
+  window.__aiToast=function(t){
+    if(!t) return; if(typeof toast==='function') return toast(t);
+    var el=document.getElementById('aitoast'); if(!el){ el=document.createElement('div'); el.id='aitoast'; el.setAttribute('aria-live','polite'); document.body.appendChild(el); }
+    el.textContent=t; el.classList.add('on'); clearTimeout(el.tm); el.tm=setTimeout(function(){ el.classList.remove('on'); },2600);
+  };
+  function aiUsageBlock(p,P){
+    var days=[], now=new Date(), i;
+    for(i=13;i>=0;i--){ var d=new Date(now); d.setDate(d.getDate()-i); days.push(aiDayStr(d)); }
+    var tot=function(k){ var x=P.days[k]; return x?x.in+x.out:0; };
+    var max=Math.max.apply(null,[1].concat(days.map(tot))), month=AIS.today.slice(0,7);
+    var monthTot=Object.keys(P.days).filter(function(k){ return k.indexOf(month)===0; }).reduce(function(n,k){ return n+P.days[k].in+P.days[k].out; },0);
+    var rows=function(obj,label){ return Object.keys(obj).sort(function(a,b){ return (obj[b].in+obj[b].out)-(obj[a].in+obj[a].out); }).map(function(k){ var x=obj[k];
+      return '<tr><td>'+aiEsc(label(k))+'</td><td>'+x.calls+'</td><td>'+aiFmtN(x.in)+'</td><td>'+aiFmtN(x.out)+'</td></tr>'; }).join(''); };
+    return '<div class="ucard"><div class="aic-h"><b>'+AI_PN[p]+'</b><span class="muted small">'+P.calls+' request'+(P.calls===1?'':'s')+'</span></div>'+
+      '<div class="ustat"><div><b>'+aiFmtN(P.in+P.out)+'</b><small>total tokens</small></div><div><b>'+aiFmtN(P.in)+'</b><small>input</small></div><div><b>'+aiFmtN(P.out)+'</b><small>output</small></div></div>'+
+      '<p class="note">Today '+aiFmtN(tot(AIS.today))+' tokens — this month '+aiFmtN(monthTot)+' tokens</p>'+
+      '<div class="ubars" aria-label="Tokens per day, last 14 days">'+days.map(function(k){ var v=tot(k); return '<span style="height:'+Math.max(v?6:2,v/max*100)+'%" class="'+(v?'':'zero')+'" title="'+k+': '+v+' tokens"></span>'; }).join('')+'</div>'+
+      '<div class="ubars-l"><span>2 weeks ago</span><span>Today</span></div>'+
+      '<table class="utab"><tr><th>Feature</th><th>Requests</th><th>In</th><th>Out</th></tr>'+rows(P.features,function(k){ return AI_FEAT[k]||k; })+'</table>'+
+      '<table class="utab"><tr><th>Model</th><th>Requests</th><th>In</th><th>Out</th></tr>'+rows(P.models,function(k){ return k; })+'</table></div>';
+  }
+  function renderAI(){
+    var el=aiSheet(), keep=el.scrollTop;
+    el.classList.toggle('open',aiIsOpen);
+    if(!aiIsOpen) return;
+    if(!AIS){ el.innerHTML='<div class="sh-head"><h2>AI</h2><button class="link" data-aiact="aiclose">Done</button></div><div class="sh-body"><p class="muted pad">Loading…</p></div>'; return; }
+    var A=AIS;
+    var card=function(p){
+      var key=A.keys[p], ml=(A.models[p]||{}).list||[], cur=A.model[p];
+      var opts=ml.some(function(m){ return m.id===cur; })?ml:[{id:cur,name:cur}].concat(ml);   // keep the chosen model visible
+      return '<div class="aicard '+(A.provider===p?'active':'')+'">'+
+        '<div class="aic-h"><b>'+AI_PN[p]+'</b>'+(A.provider===p?'<span class="badge-ai">In use</span>':key?'<button class="sm" data-aiact="aiprov" data-v="'+p+'">Use '+AI_PN[p]+'</button>':'')+'</div>'+
+        '<div class="aic-row"><span class="lbl">API key</span>'+(key?'<code>'+aiEsc(key)+'</code>':'<span class="muted">Not set</span>')+'</div>'+
+        '<div class="aic-btns"><button class="sm '+(key?'':'primary')+'" data-aiact="aikey" data-v="'+p+'">'+(key?'Change key':'Add key')+'</button>'+
+          (key?'<button class="sm" data-aiact="aitest" data-v="'+p+'">Test connection</button><button class="sm danger '+(aiArmed==='rm'+p?'armed':'')+'" data-aiact="airm" data-v="'+p+'">'+(aiArmed==='rm'+p?'Confirm':'Remove')+'</button>':'')+'</div>'+
+        '<label class="aic-row lbl" for="ms-'+p+'">Model</label>'+
+        '<select id="ms-'+p+'" class="modelsel" data-p="'+p+'">'+opts.map(function(m){ return '<option value="'+aiEsc(m.id)+'" '+(m.id===cur?'selected':'')+'>'+aiEsc(m.name)+(m.name!==m.id?' — '+aiEsc(m.id):'')+'</option>'; }).join('')+'</select>'+
+        '<div class="aic-btns"><button class="sm" data-aiact="aimodels" data-v="'+p+'" '+(key&&!aiLoading[p]?'':'disabled')+'>'+(aiLoading[p]?'Loading…':ml.length?'Refresh model list':'Load my models')+'</button>'+
+          '<span class="note">'+(ml.length?ml.length+' models, updated '+aiRel(A.models[p].at):key?'Loads the models your key can use':'Add a key to load models')+'</span></div>'+
+      '</div>';
+    };
+    var order=A.provider==='openai'?['openai','anthropic']:['anthropic','openai'];
+    var used=Object.keys(A.usage.p).filter(function(p){ return A.usage.p[p].calls; });
+    var jobs=AI_JOBS.length?AI_JOBS.map(function(j){
+        return '<div class="srow"><div class="grow"><b>'+aiEsc(j.title)+'</b><small class="muted">'+aiEsc(j.text)+'</small></div>'+
+          '<button class="switch '+(A.ai?'on':'')+'" data-aiact="aitoggle" aria-label="'+aiEsc(j.title)+'"></button></div>'; }).join('')
+      :'<p class="muted pad"></p>';
+    el.innerHTML='<div class="sh-head"><h2>AI</h2><button class="link" data-aiact="aiclose">Done</button></div><div class="sh-body">'+
+      '<p class="hint">Keys stay in this iPhone’s Keychain. Only the provider marked “In use” is called.</p>'+
+      order.map(card).join('')+
+      '<h3 class="sec">What AI does</h3>'+jobs+
+      '<h3 class="sec">Token usage</h3>'+
+      (used.length?used.map(function(p){ return aiUsageBlock(p,A.usage.p[p]); }).join(''):'<p class="muted pad">No AI requests yet.</p>')+
+      (used.length?'<div class="aic-btns"><span class="note">Counting since '+new Date(A.usage.since).toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'})+'</span>'+
+        '<button class="sm danger '+(aiArmed==='reset'?'armed':'')+'" data-aiact="usagereset">'+(aiArmed==='reset'?'Confirm reset':'Reset counters')+'</button></div>':'')+
+    '</div>';
+    el.scrollTop=keep;   // re-renders must not jump the user back to the top
+  }
+  function aiClick(e){
+    e.stopPropagation();   // the sheet's taps never reach the app's own click handler
+    if(e.target.closest('select, option, input, textarea')) return;
+    var t=e.target.closest('[data-aiact]'); if(!t||t.disabled) return;
+    var act=t.getAttribute('data-aiact'), v=t.getAttribute('data-v');
+    if(act==='aiclose'){ aiIsOpen=false; aiArmed=null; renderAI(); return; }
+    if(act==='aikey'||act==='aitest'||act==='aiprov'||act==='aitoggle'){ if(act==='aitest') window.__aiToast('Testing '+AI_PN[v]+'…'); aiSend(act,{v:v}); return; }
+    if(act==='aimodels'){ aiLoading[v]=1; renderAI(); aiSend('aimodels',{v:v}); return; }
+    if(act==='airm'){ if(aiArmed==='rm'+v){ aiArmed=null; aiSend('airm',{v:v}); } else aiArm('rm'+v); return; }
+    if(act==='usagereset'){ if(aiArmed==='reset'){ aiArmed=null; aiSend('usagereset',{}); } else aiArm('reset'); return; }
+  }
+  // Keys and the background switch changed in AI settings apply straight away.
+  window.__aiChanged = (s) => {
+    const changed = S.ai.hasKey !== s.hasKey || S.ai.bg !== s.ai;
+    S.ai.hasKey = s.hasKey;
+    S.ai.bg = s.ai;
+    if (!s.hasKey && (S.trainView === "ai" || S.trainView === "plan") && !S.plan) S.trainView = "home";
+    if (changed) render();
+  };
 
   // ------------------------------------------------ AI coach
   const INTENSITY = [
@@ -1029,7 +1301,7 @@ function webApp() {
     S.plan = {
       title: String(res.title || "Your workout").slice(0, 60), summary: String(res.summary || ""),
       minutes: clamp(res.estimated_minutes, 5, 180, b.minutes), warmup: String(res.warmup || ""), cooldown: String(res.cooldown || ""),
-      exercises,
+      exercises, by: res._by || "",
     };
     S.trainView = "plan";
     render();
@@ -1056,7 +1328,7 @@ function webApp() {
   async function analyze(id) {
     const s = S.history.sessions.find((x) => x.id === id);
     if (!s || S.aiBusy) return;
-    if (!S.ai.hasKey) return toast("Add your OpenAI API key under Build with AI first.", true);
+    if (!S.ai.hasKey) return toast("Add a Claude or OpenAI key in AI settings first.", true);
     const input = {
       today: isoDay(new Date()),
       workout: {
@@ -1089,7 +1361,7 @@ function webApp() {
           group: f.group, intensity: ["light", "moderate", "hard"].includes(f.intensity) ? f.intensity : "moderate",
           sets: Math.max(1, Math.min(20, Math.round(+f.sets || 3))), why: str(f.why),
         })),
-        recovery: str(res.recovery),
+        recovery: str(res.recovery), by: res._by || "",
         next: {
           groups: ((res.next_workout || {}).groups || []).filter((k) => GROUP_KEYS.includes(k)),
           when: str((res.next_workout || {}).when), idea: str((res.next_workout || {}).idea),
@@ -1102,8 +1374,8 @@ function webApp() {
   }
 
   function keyBox() {
-    return `<div class="keybox"><p class="small"><b>Connect the AI coach.</b> Paste your OpenAI API key once. It stays in this iPhone's Keychain and is only sent to OpenAI. Create one at platform.openai.com.</p>
-      <div class="keyrow"><input type="password" id="aikey" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="sk-..."><button class="chip" data-a="savekey">Save</button></div></div>`;
+    return `<div class="keybox"><p class="small"><b>Connect the AI coach.</b> Add a Claude or OpenAI key in AI settings. It stays in this iPhone's Keychain and is only sent to that provider.</p>
+      <div class="keyrow"><button class="chip" data-a="aisettings">AI settings</button></div></div>`;
   }
 
   function renderBuilder() {
@@ -1125,7 +1397,7 @@ function webApp() {
       <h2>Anything else?</h2>
       <textarea class="search" data-in="b-note" rows="2" placeholder="Optional, e.g. lower back is a bit sore, or I want to get better at bench press">${esc(b.note)}</textarea>
       ${S.ai.hasKey ? "" : keyBox()}
-      <p class="muted small">${busy ? "<b>Building your workout…</b> " : ""}${S.ai.hasKey ? "Tap <b>Build workout</b> at the top when you're ready. " : "Save your key above to enable <b>Build workout</b>. "}AI suggestions can be wrong. Check every weight before you lift it.</p>`;
+      <p class="muted small">${busy ? "<b>Building your workout…</b> " : ""}${S.ai.hasKey ? "Tap <b>Build workout</b> at the top when you're ready. " : "Add a key in AI settings to enable <b>Build workout</b>. "}AI suggestions can be wrong. Check every weight before you lift it.</p>`;
   }
 
   function renderBuilding() {
@@ -1152,7 +1424,7 @@ function webApp() {
         <div class="ex-meta"><b>${x.sets} × ${x.reps}${x.w ? ` at ${fmtNum(x.w)} ${UNIT}` : ""}</b>, rest ${x.rest} s</div>
         ${x.note ? `<div class="ex-meta">${esc(x.note)}</div>` : ""}</div></div>`).join("");
     return `<header class="bar"><button class="back" data-a="b-edit">‹ Settings</button></header>
-      <p class="kicker">✨ Built by your AI coach</p>
+      <p class="kicker"><span class="badge-ai">${esc(p.by ? `✦ AI workout by ${p.by}` : "✦ AI workout")}</span></p>
       <h1 class="title">${esc(p.title)}</h1>
       <p class="lead">${esc(p.summary)}</p>
       <p class="muted small">About ${p.minutes} min, ${plural(p.exercises.length, "exercise")}, ${plural(total, "set")}.</p>
@@ -1166,6 +1438,7 @@ function webApp() {
 
   function renderAnalysis(s) {
     const busy = S.aiBusy === `an:${s.id}`;
+    if (!s.ai && !S.ai.hasKey) return "";   // the AI coach is hidden without a key
     if (!s.ai)
       return `<button class="ai-btn${busy ? " busy" : ""}" data-a="analyze" data-v="${esc(s.id)}" ${busy || S.aiBusy ? "disabled" : ""}>${busy ? "Your AI coach is reviewing this workout…" : "✨ Analyze with AI coach"}</button>`;
     const a = s.ai;
@@ -1178,7 +1451,7 @@ function webApp() {
     }).join("");
     const nextLabels = a.next.groups.map((k) => GROUPS.find((g) => g.key === k).label).join(" + ");
     return `<div class="coach">
-      <p class="kicker">✨ AI coach</p>
+      <p class="kicker"><span class="badge-ai">${esc(a.by ? `✦ AI review by ${a.by}` : "✦ AI review")}</span></p>
       <p class="coach-h">${esc(a.headline)}</p>
       ${list("Went well", a.went_well)}${list("Watch", a.watch_out)}
       ${focus ? `<h3>Focus next</h3>${focus}` : ""}
@@ -1267,11 +1540,11 @@ function webApp() {
       ${resume}
       <div class="rack">${GROUPS.map(plateHTML).join("")}</div>
       <button class="primary" data-a="browse" ${sel ? "" : "disabled"}>${sel ? `Show ${countFor(selectedMuscles())} exercises` : "Pick a muscle group"}</button>
-      <button class="secondary ai" data-a="builder">✨ Build a workout with AI</button>
+      ${S.ai.hasKey ? `<button class="secondary ai" data-a="builder">✨ Build a workout with AI</button>` : ""}
       <footer class="lib">
         <p class="muted small">${S.lib.length} exercises for ${esc(eqNames())} stored on this phone${S.meta ? `, updated ${esc(day(S.meta.syncedAt))}` : ""}. Photos and instructions from free-exercise-db (public domain).</p>
         ${missingPhotos() && !S.sync ? `<p class="small"><b>${plural(missingPhotos(), "exercise")} ${missingPhotos() === 1 ? "has" : "have"} no photos yet.</b> Tap Update library to download them.</p>` : ""}
-        <div class="row">${S.sync ? "" : `<button class="link" data-a="sync">Update library</button>`}${S.ai.hasKey ? `<button class="link danger${S.armed === "delkey" ? " armed" : ""}" data-a="delkey">${S.armed === "delkey" ? "Tap to remove" : "AI key"}</button>` : ""}<button class="link danger" data-a="disclaimer">Disclaimer</button></div>
+        <div class="row">${S.sync ? "" : `<button class="link" data-a="sync">Update library</button>`}<button class="link" data-a="aisettings">AI settings</button><button class="link danger" data-a="disclaimer">Disclaimer</button></div>
         ${S.sync ? syncProgress() : ""}
         <p class="ver">Go2FGym v${esc(BOOT.version || "")}</p>
       </footer>`;
@@ -1583,7 +1856,7 @@ function webApp() {
     if (!S.ai.hasKey) {
       S.trainView = "ai";
       render();
-      return toast("Add your OpenAI key to build workouts instantly.", true);
+      return toast("Add a Claude or OpenAI key in AI settings to build workouts instantly.", true);
     }
     S.plan = null;
     S.trainView = "plan";
@@ -1714,7 +1987,7 @@ function webApp() {
   async function stravaPost(id, mode) {
     const s = S.history.sessions.find((x) => x.id === id);
     if (!s || S.aiBusy) return;
-    if (!S.ai.hasKey) return toast("Add your OpenAI API key under Build with AI first.", true);
+    if (!S.ai.hasKey) return toast("Add a Claude or OpenAI key in AI settings first.", true);
     const start = new Date(s.start);
     const v = volume(s.entries);
     const input = {
@@ -1744,25 +2017,26 @@ function webApp() {
     const s2 = S.history.sessions.find((x) => x.id === id);
     if (res && res.title && s2) {
       const s = s2;
-      s.strava = Object.assign({}, s.strava, { [mode]: { title: String(res.title).slice(0, 120), description: String(res.description || "").slice(0, 700) } });
+      s.strava = Object.assign({}, s.strava, { [mode]: { title: String(res.title).slice(0, 120), description: String(res.description || "").slice(0, 700), by: res._by || "" } });
       S.stravaMode[id] = mode;
       send("save", { session: s });
     }
     render();
   }
   function renderStrava(s) {
-    const mode = S.stravaMode[s.id] || S.ai.stravaMode;
+    // Without a key only the Neutral template is offered: AI tones are hidden, not disabled.
+    const mode = S.ai.hasKey ? S.stravaMode[s.id] || S.ai.stravaMode : "neutral";
     const busy = S.aiBusy === `st:${s.id}`;
     let post = s.strava && s.strava[mode];
     if (!post && !S.ai.hasKey && mode === "neutral") post = stravaTemplate(s);
-    const seg = `<div class="seg">${STRAVA_MODES.map((x) => `<button data-a="st-mode" data-v="${esc(s.id)}|${x.key}" aria-pressed="${mode === x.key}" ${S.aiBusy ? "disabled" : ""}>${x.label}</button>`).join("")}</div>`;
+    const modes = S.ai.hasKey ? STRAVA_MODES : STRAVA_MODES.filter((x) => x.key === "neutral");
+    const seg = `<div class="seg">${modes.map((x) => `<button data-a="st-mode" data-v="${esc(s.id)}|${x.key}" aria-pressed="${mode === x.key}" ${S.aiBusy ? "disabled" : ""}>${x.label}</button>`).join("")}</div>`;
     let body;
     if (busy) body = `<p class="busy small">Writing a ${mode} title and description…</p>`;
     else if (post)
-      body = `<div class="st-post"><p class="st-title">${esc(post.title)}</p><p class="st-desc">${esc(post.description)}</p></div>
+      body = `${post.basic ? `<span class="badge-ex">Template — no AI</span>` : `<span class="badge-ai">${esc(post.by ? `✦ AI-written by ${post.by}` : "✦ AI-written")}</span>`}<div class="st-post"><p class="st-title">${esc(post.title)}</p><p class="st-desc">${esc(post.description)}</p></div>
         <div class="st-actions"><button class="chip" data-a="st-copy" data-v="${esc(s.id)}|title">Copy title</button><button class="chip" data-a="st-copy" data-v="${esc(s.id)}|description">Copy description</button><button class="chip" data-a="st-copy" data-v="${esc(s.id)}|both">Copy both</button></div>
-        ${post.basic ? `<p class="muted small">Basic version. Add an OpenAI key under Build with AI for AI-written posts in any tone.</p>` : `<button class="link small" data-a="st-gen" data-v="${esc(s.id)}" ${S.aiBusy ? "disabled" : ""}>Write another ${mode} version</button>`}`;
-    else if (!S.ai.hasKey) body = `<p class="muted small">${cap(mode)} posts are written by the AI coach. Add your OpenAI key under <b>Build with AI</b>, or pick Neutral for a basic version.</p>`;
+        ${post.basic ? `<p class="muted small">Add a Claude or OpenAI key in AI settings (Train tab, bottom) for AI-written posts in any tone.</p>` : `<button class="link small" data-a="st-gen" data-v="${esc(s.id)}" ${S.aiBusy ? "disabled" : ""}>Write another ${mode} version</button>`}`;
     else body = `<button class="ai-btn" data-a="st-gen" data-v="${esc(s.id)}" ${S.aiBusy ? "disabled" : ""}>✨ Write a ${mode} Strava post</button>`;
     return `<div class="strava"><p class="kicker st-k">Strava post</p>${seg}${body}</div>`;
   }
@@ -1852,13 +2126,7 @@ function webApp() {
       if (f) S.builder.intensity = f.intensity === "light" ? "easy" : f.intensity;
       openBuilder(s && s.ai ? s.ai.next.groups : []);
     },
-    savekey: () => {
-      const el = $("#aikey");
-      const key = el ? el.value.trim() : "";
-      if (!key) return toast("Paste your OpenAI API key first.", true);
-      send("setkey", { key });
-    },
-    delkey: () => arm("delkey", () => { send("delkey", {}); }),
+    aisettings: () => window.__aiOpen(),
     "upd-now": (v, t) => updNow(t),
     "upd-later": () => updLater(),
     "upd-close": () => { const uo = $("#upd"); if (uo) uo.remove(); },
@@ -2047,9 +2315,9 @@ function webApp() {
       out = out || {};
       if (out.needKey) {
         S.ai.hasKey = false;
-        toast("Add your OpenAI API key to use the AI coach.", true);
+        toast("Add a Claude or OpenAI key in AI settings to use the AI coach.", true);
       } else if (out.error) toast(`AI coach: ${out.error}`, true);
-      if (done) done(out.data || null);
+      if (done) done(out.data ? Object.assign(out.data, { _by: out.by }) : null);
     },
     showUpdate(u) {
       if (!u || !u.latest) return;
@@ -2076,12 +2344,6 @@ function webApp() {
         later.hidden = false;
       }
     },
-    onKey(r) {
-      if (r.ok && r.removed) { S.ai.hasKey = false; toast("AI key removed"); }
-      else if (r.ok) { S.ai.hasKey = true; toast("Key saved. Your AI coach is ready."); }
-      else toast(r.msg || "Could not save the key.", true);
-      render();
-    },
     toast(msg) { toast(msg); },
   };
 
@@ -2098,6 +2360,53 @@ function webApp() {
 
 // ---------------------------------------------------------------- styles
 const CSS = `
+#aisheet{--ai-paper:var(--bg);--ai-sheet:var(--surface);--ai-rule:var(--line);--ai-ink:var(--ink);--ai-muted:var(--muted);--ai-signal:var(--accent);--ai-wash:color-mix(in srgb,var(--ai-signal) 14%,transparent);--ai-danger:#d93636;
+  position:fixed;inset:0;z-index:60;background:var(--ai-paper);color:var(--ai-ink);transform:translateY(102%);visibility:hidden;transition:transform .28s ease,visibility 0s linear .28s;overflow-y:auto;-webkit-overflow-scrolling:touch;font:15px/1.4 -apple-system,system-ui,sans-serif;text-align:left}
+#aisheet.open{transform:none;visibility:visible;transition:transform .28s ease}
+#aisheet *{box-sizing:border-box}
+#aisheet button{font:inherit;color:inherit;background:none;border:0;margin:0;padding:0;cursor:pointer;-webkit-appearance:none;appearance:none;touch-action:manipulation}
+#aisheet .sh-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px;background:var(--ai-paper);border-bottom:1px solid var(--ai-rule)}
+#aisheet .sh-head h2{margin:0;font-size:22px;font-weight:700}
+#aisheet .sh-body{padding:4px 16px calc(28px + env(safe-area-inset-bottom,0px));max-width:680px;margin:0 auto}
+#aisheet .link{color:var(--ai-signal);font-weight:600;font-size:17px;padding:8px 0 8px 12px}
+#aisheet .hint{font-size:14px;color:var(--ai-muted);margin:12px 0 0}
+#aisheet .muted{color:var(--ai-muted)} #aisheet .small{font-size:13px} #aisheet .pad{padding:4px 0 8px;margin:0}
+#aisheet .note{font-size:12.5px;color:var(--ai-muted);margin:6px 0 0}
+#aisheet .sec{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ai-muted);margin:24px 0 8px}
+#aisheet .sm{font-size:14px;font-weight:600;padding:8px 12px;border-radius:9px;border:1px solid var(--ai-rule);background:var(--ai-sheet);color:var(--ai-ink)}
+#aisheet .sm.primary{background:var(--ai-signal);border-color:var(--ai-signal);color:#fff}
+#aisheet .srow{display:flex;align-items:center;gap:12px;background:var(--ai-sheet);border:1px solid var(--ai-rule);border-radius:14px;padding:12px 14px;margin:8px 0}
+#aisheet .grow{flex:1;min-width:0} #aisheet .grow b{display:block;font-weight:600} #aisheet .grow small{display:block;font-size:13px;margin-top:2px}
+#aisheet .switch{flex:none;width:51px;height:31px;border-radius:16px;background:var(--ai-rule);position:relative;transition:background .2s}
+#aisheet .switch::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .2s}
+#aisheet .switch.on{background:var(--ai-signal)} #aisheet .switch.on::after{transform:translateX(20px)}
+#aisheet .aicard,#aisheet .ucard{background:var(--ai-sheet);border:1px solid var(--ai-rule);border-radius:14px;padding:14px;margin:14px 0}
+#aisheet .aicard.active{border-color:var(--ai-signal);box-shadow:0 0 0 1px var(--ai-signal)}
+#aisheet .aic-h{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:17px}
+#aisheet .aic-row{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:14px}
+#aisheet .aic-row.lbl,#aisheet .aic-row .lbl{font-weight:600}
+#aisheet code{font:13px ui-monospace,Menlo,monospace;background:var(--ai-paper);border:1px solid var(--ai-rule);border-radius:6px;padding:2px 6px}
+#aisheet .aic-btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+#aisheet .sm[disabled]{opacity:.5}
+#aisheet .modelsel{display:block;width:100%;margin-top:6px;font:16px -apple-system,system-ui,sans-serif;color:var(--ai-ink);background:var(--ai-paper);border:1px solid var(--ai-rule);border-radius:9px;padding:9px 10px}
+#aisheet .danger{color:var(--ai-danger)} #aisheet .danger.armed{background:var(--ai-danger);color:#fff;border-color:var(--ai-danger)}
+#aisheet .ustat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 4px}
+#aisheet .ustat div{background:var(--ai-paper);border-radius:10px;padding:8px 10px}
+#aisheet .ustat b{display:block;font-size:20px;font-weight:700}
+#aisheet .ustat small{color:var(--ai-muted);font-size:12px}
+#aisheet .ubars{display:flex;align-items:flex-end;gap:3px;height:56px;margin-top:10px}
+#aisheet .ubars span{flex:1;background:var(--ai-signal);border-radius:3px 3px 0 0;min-height:2px}
+#aisheet .ubars span.zero{background:var(--ai-rule)}
+#aisheet .ubars-l{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ai-muted);margin-top:4px}
+#aisheet .utab{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+#aisheet .utab th{text-align:left;font-weight:600;color:var(--ai-muted);padding:4px 4px 4px 0;border-bottom:1px solid var(--ai-rule)}
+#aisheet .utab td{padding:6px 4px 6px 0;border-bottom:1px solid var(--ai-rule);word-break:break-word}
+#aisheet .utab th:not(:first-child),#aisheet .utab td:not(:first-child){text-align:right;white-space:nowrap}
+#aitoast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));z-index:61;transform:translate(-50%,20px);opacity:0;visibility:hidden;max-width:90vw;padding:10px 16px;border-radius:18px;background:var(--ink);color:var(--bg);font:14px/1.35 -apple-system,system-ui,sans-serif;text-align:center;pointer-events:none;transition:transform .25s,opacity .25s,visibility 0s linear .25s}
+#aitoast.on{transform:translate(-50%,0);opacity:1;visibility:visible;transition:transform .25s,opacity .25s}
+.badge-ai{display:inline-block;font-size:12px;font-weight:700;color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);border-radius:6px;padding:2px 8px}
+.badge-ex{display:inline-block;font-size:12px;font-weight:600;color:var(--muted);border:1px dashed var(--muted);border-radius:6px;padding:1px 8px}
+.st-post{margin-top:8px}
 :root{
   --bg:#E8EBEE;--surface:#FFFFFF;--ink:#14181C;--muted:#5A636C;--line:#D2D7DC;
   --accent:#C8102E;--accent-ink:#FFFFFF;--done:#2E8B3E;
@@ -2346,6 +2655,7 @@ textarea.search{resize:none;line-height:1.4}
 
 // ---------------------------------------------------------------- main
 async function main() {
+  aiMigrate(["go2fgym-openai-key"]);   // 1.5.x kept one OpenAI key under another name
   if (config.runsInWidget) await runWidget();
   else await runApp();
   Script.complete();
