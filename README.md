@@ -20,9 +20,10 @@ Runs in [Scriptable](https://scriptable.app) and works fully offline.
 - Widget, extra equipment, backups and troubleshooting: **[install guide](docs/INSTALL.md)**.
 
 <p align="center">
-  <img src="docs/screenshots/01-pick-muscles.png" width="230" alt="Pick muscle groups by tapping weight plates">
-  <img src="docs/screenshots/03-exercise-demo.png" width="230" alt="Exercise with start-to-end photo demo">
-  <img src="docs/screenshots/05-log-sets.png" width="230" alt="Logging sets with the rest timer running">
+  <img src="docs/screenshots/01-pick-muscles.png" width="180" alt="Pick muscle groups by tapping weight plates">
+  <img src="docs/screenshots/03-exercise-demo.png" width="180" alt="Exercise with start-to-end photo demo">
+  <img src="docs/screenshots/05-log-sets.png" width="180" alt="Logging sets with the rest timer running">
+  <img src="docs/screenshots/04-steps-and-progress.png" width="180" alt="Steps, last time and progress chart">
 </p>
 
 ## Why
@@ -31,24 +32,45 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
 
 ## Features
 
+### Train
+
 | | |
 |---|---|
 | 🏋️ **Pick by muscle** | Tap the plates for chest, back, legs, shoulders, arms, glutes or core. You get only the exercises that train them. |
 | 🖼 **See it done** | A start-to-end photo demo, numbered steps, and the muscles each exercise works. |
-| 🏠 **Made for home** | 466 exercises for bodyweight, dumbbells, barbell and resistance bands. Own kettlebells or an EZ bar? Add them with one line. |
+| 🏠 **Made for home** | 466 exercises for bodyweight, dumbbells, barbell and resistance bands. Own kettlebells, an E-Z bar or a medicine ball? Switch them on in **Settings › Library**. |
 | ✍️ **Fast logging** | Weight and reps are prefilled from last time. Change what's different, tap ✓, done. |
-| ⏱ **Rest timer** | Ticking a set starts a 90 s countdown with a beep. Add 30 s or skip. |
-| 📈 **Progress** | Each exercise shows your last performance and a trend of your estimated one-rep max. |
+| ⏱ **Rest timer** | Ticking a set starts a countdown with a beep (90 s, adjustable in Settings). Add 30 s or skip. |
+| 💾 **Nothing lost** | An unfinished workout comes back when you reopen the app. History is mirrored to iCloud Drive. |
+| ✈️ **Offline** | One download of about 36 MB, then no network needed. |
+
+### Track
+
+| | |
+|---|---|
 | 🗓 **Calendar** | Every workout on a month calendar, with coloured dots for the muscle groups trained each day and monthly totals per group. Tap a day to see it set by set. |
-| 📈 **Progress** | Sets per week for 12 weeks stacked by muscle group, muscle balance for the last 4 weeks with the most-due group, your streak, and a trend for each of your main lifts. |
+| 📈 **Progress** | Sets per week for 12 weeks stacked by muscle group, muscle balance for the last 4 weeks with the most-due group, your streak, and a trend for each main lift. Every exercise also shows your last performance. |
+| 🕒 **Last workout at a glance** | A small chip at the top shows when you last trained, which muscle groups and for how long. Tap it to open that day. |
 | 🏃 **Strava post** | A ready-made title and description for every workout in **Serious**, **Funny** or **Neutral** tone. Copy title, description or both, then paste into Strava. |
 | 🗂 **History** | Every past workout set by set, one-tap **Repeat this workout**, and CSV export. |
-| ✈️ **Offline** | One download of about 36 MB, then no network needed. |
-| 💾 **Nothing lost** | An unfinished workout comes back when you reopen the app. History is mirrored to iCloud Drive. |
-| ✨ **AI workout builder** | Say what to train (or let the AI decide), which equipment you have, how long and how hard. You get a plan from your own library with sets, reps, rest and weights based on your history. Review it, then start with one tap. |
-| ✨ **AI coach after each workout** | What went well, what to watch, which muscle groups to focus on next and how hard, when you've recovered, and a one-tap **Build this next workout**. |
 | 📲 **Widget** | Your last workout and this week's count on the Home Screen. |
-| 🌗 **Light and dark** | Follows your iPhone's appearance. |
+
+### AI coach (optional, Claude or OpenAI)
+
+| | |
+|---|---|
+| ✨ **AI workout builder** | Say what to train (or let the AI decide), your equipment, how long and how hard. You get a plan from your own library with sets, reps, rest and weights from your history. |
+| ⚡ **Build next** | One tap at the top of History or Progress builds your next workout straight from your history: the coach's suggestion or your most-due muscles, at your usual length. |
+| 🧠 **Review after each workout** | What went well, what to watch, which muscle groups to focus on next and how hard, and when you've recovered. |
+| 🔐 **Your own key** | Claude or OpenAI, any model your key can use, with token usage per day, feature and model. Keys stay in the iPhone Keychain. |
+
+### Make it yours
+
+| | |
+|---|---|
+| 🎛 **Settings** | Equipment, kg or lb, rest timer, backup, AI coach and updates in one sheet, behind the sliders icon. Changes apply at once. |
+| 🎨 **Look** | Auto (light or dark) or six palettes, Comfortable, Compact or a one-line Tiny layout, four text sizes, condensed or serif headlines. |
+| ⬆️ **In-app updates** | New versions are offered in the app with their three best features. **Update now**, or **Later** to be asked again in two days. |
 
 <p align="center">
   <img src="docs/screenshots/06-history.png" width="180" alt="Calendar with muscle-group dots per day">
@@ -60,16 +82,18 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
 <p align="center">
   <img src="docs/screenshots/08-ai-build-workout.png" width="180" alt="AI workout builder: muscles, equipment, time and intensity">
   <img src="docs/screenshots/09-ai-plan.png" width="180" alt="AI-built workout plan with sets, weights and rest">
-  <img src="docs/screenshots/10-ai-coach.png" width="180" alt="AI coach analysis after a workout">
+  <img src="docs/screenshots/10-ai-coach.png" width="180" alt="AI review after a workout">
+  <img src="docs/screenshots/15-ai-settings.png" width="180" alt="AI settings: Claude and OpenAI keys, models and token usage">
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/02-exercise-list.png" width="180" alt="Exercise list filtered by muscle and equipment">
-  <img src="docs/screenshots/04-steps-and-progress.png" width="180" alt="Steps, last time and progress chart">
+  <img src="docs/screenshots/14-settings.png" width="180" alt="Settings: colours, layout, text size, units and equipment">
+  <img src="docs/screenshots/16-update.png" width="180" alt="Update sheet with the new version's best features">
   <img src="docs/screenshots/07-dark-mode.png" width="180" alt="Dark mode">
+  <img src="docs/screenshots/02-exercise-list.png" width="180" alt="Exercise list filtered by muscle and equipment">
 </p>
 
-## AI coach (optional)
+## Setting up the AI coach
 
 Uses Claude or OpenAI with **your own API key**. Everything else in the app works without it, and the AI buttons stay hidden until you add a key.
 
@@ -111,7 +135,9 @@ Every version is listed in the **[changelog](CHANGELOG.md)**. The version you ha
 | See your trends | **Progress** tab; tap a lift for its details |
 | Post to Strava | **History**, open the workout, pick **Serious**, **Funny** or **Neutral** under *Strava post*, then **Copy both** |
 | Export | **History › Export CSV** |
-| Get new exercises or missing photos | **Train › Update library** |
+| Get new exercises or missing photos | **Train › Update library** (bottom of the Train screen) |
+| Change look, units, equipment or rest time | The **sliders icon** at the top of the Train tab |
+| Update the app | **Update now** on the update sheet, or **Settings › Updates › Check for updates now** |
 
 ## Settings
 

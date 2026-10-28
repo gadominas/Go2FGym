@@ -48,10 +48,11 @@ To add more, open Go2FGym, tap the **sliders icon** on the Train tab and switch 
 
 ## 5. Optional: connect the AI coach
 
-The AI workout builder and post-workout coach use the OpenAI API with your own key. Requests are billed to your OpenAI account.
+The AI workout builder, Build next, the post-workout review and AI-written Strava posts use **Claude or OpenAI** with your own key. Requests are billed to that provider's account.
 
-1. Create an API key at [platform.openai.com › API keys](https://platform.openai.com/api-keys).
-2. In Go2FGym tap **Train › ✨ Build a workout with AI**, paste the key (it starts with `sk-`) and tap **Save**.
+1. Create an API key at [console.anthropic.com](https://console.anthropic.com/settings/keys) (Claude) or [platform.openai.com](https://platform.openai.com/api-keys) (OpenAI).
+2. In Go2FGym tap the **sliders icon** on the Train tab, then **AI settings**, and **Add key** under Claude or OpenAI.
+3. Optionally tap **Test connection**, or pick a different model. The provider with a key is marked **In use**.
 
 The key is typed into a native iOS prompt, stored in the iOS Keychain on this iPhone and only sent to its own provider (Claude or OpenAI). Open **Settings › AI coach › AI settings** to add or remove a key, pick a model, see token usage, or switch off the automatic analysis after each workout (**What AI does**).
 
