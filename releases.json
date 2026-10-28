@@ -4,6 +4,23 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.7.1",
+      "date": "2026-10-28",
+      "title": "A tidier header",
+      "highlights": [
+        {
+          "icon": "🧹",
+          "title": "Tidier header",
+          "text": "The Settings button now sits neatly in the top bar at every text size."
+        }
+      ],
+      "changes": [],
+      "fixes": [
+        "The Settings button on the Train tab overlapped the line under the Go2FGym header",
+        "With Large or Larger text, the 7AM Club link pushed the Settings button off the screen"
+      ]
+    },
+    {
       "version": "1.7.0",
       "date": "2026-10-28",
       "title": "Settings, your way",

@@ -2,6 +2,15 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.7.1 (2026-10-28): A tidier header
+
+- 🧹 **Tidier header**: The Settings button now sits neatly in the top bar at every text size.
+
+**Fixes**
+
+- The Settings button on the Train tab overlapped the line under the Go2FGym header
+- With Large or Larger text, the 7AM Club link pushed the Settings button off the screen
+
 ## 1.7.0 (2026-10-28): Settings, your way
 
 - 🎛 **A real Settings screen**: Equipment, kg or lb, rest timer, backup and AI coach in one place, behind the sliders icon.

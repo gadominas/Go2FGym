@@ -28,7 +28,7 @@ const COACH = { autoAnalyze: true, autoStrava: true };
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.7.0';
+const VERSION = '1.7.1';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -2744,10 +2744,11 @@ h2{font:700 calc(20px * var(--ts))/1.2 var(--display);margin:22px 0 8px}
 p{margin:0 0 10px}
 .muted{color:var(--muted)}.small{font-size:calc(14px * var(--ts))}
 .hero{font:800 calc(46px * var(--ts))/.95 var(--display);margin:14px 0 8px;letter-spacing:-.01em}
-.brand{display:flex;align-items:center;gap:8px;min-height:44px;padding-top:4px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:8px;min-height:56px;padding:6px 0 8px;border-bottom:1px solid var(--line)}
 .brand-mark svg{display:block;width:24px;height:24px}
 .brand-name{font:800 calc(19px * var(--ts))/1 var(--display);margin-right:auto;letter-spacing:-.01em}
-.club{font-size:calc(13px * var(--ts));color:var(--muted);padding:10px 0 10px 8px;white-space:nowrap}
+.club{font-size:calc(13px * var(--ts));color:var(--muted);padding:8px 0 8px 8px;min-width:0;text-align:right;line-height:1.2}
+.club b{white-space:nowrap}
 .club b{color:var(--ink);font-weight:700}
 .club span{color:var(--accent);font-weight:700}
 .title{font:800 calc(32px * var(--ts))/1.02 var(--display);margin:6px 0 12px;letter-spacing:-.01em}
@@ -2966,7 +2967,7 @@ body.d-tiny .sess-head b{display:inline;font-size:calc(16px * var(--ts));margin-
 body.d-tiny .sess-head>span:first-child{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.d-tiny .sess-head>span:first-child>span{display:inline}
 body.d-compact .sess-head{padding:10px 14px}
-.brand .icon{width:40px;height:40px;border-radius:20px;display:grid;place-items:center;background:var(--sheet);border:1px solid var(--rule);color:var(--ink);flex:none;margin-left:6px}
+.brand .icon{width:36px;height:36px;border-radius:18px;display:grid;place-items:center;background:var(--sheet);border:1px solid var(--rule);color:var(--ink);flex:none;margin-left:6px}
 .brand .icon svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 /* Settings sheet (scoped: the app already uses .seg, .chip and .row) */
 #cfgsheet{position:fixed;inset:0;z-index:50;background:var(--paper);color:var(--ink);transform:translateY(102%);visibility:hidden;transition:transform .28s ease,visibility 0s linear .28s;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;text-align:left}
