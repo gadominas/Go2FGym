@@ -2,6 +2,21 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.8.0 (2026-10-29): Easier to get around
+
+- ＋ **Add exercises anytime**: ＋ Add exercises in the workout header opens the list for that workout's muscles.
+- 👁 **Quick preview**: Tap the eye on any exercise in your workout to see it moving, without leaving.
+- 🧭 **Clear way back**: Bigger back buttons, and a Workout button on every Train screen while you train.
+
+**Changes**
+
+- ＋ Add exercises in the Workout header and under the exercises opens the exercise list filtered to the workout's muscle groups, with a short hint
+- ✓ Workout (n) button in the header of the exercise list and exercise pages while a workout is running
+- Built plans: Start in the header, Start and add exercises at the bottom, and ‹ Options instead of ‹ Settings
+- Preview pop-up from the eye button on workout and plan exercises: photo demo, muscles, last time, and Open exercise; closes itself after 10 seconds with a countdown
+- Back buttons are now clearly visible buttons instead of small text links
+- Empty Workout tab offers Choose muscles and, with an AI key, Build next workout
+
 ## 1.7.2 (2026-10-29): No more black screen
 
 - 🖤 **Opens reliably**: If iOS fails to start the screen on opening, the app now notices and reloads it by itself.

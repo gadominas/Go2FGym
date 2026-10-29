@@ -28,7 +28,7 @@ const COACH = { autoAnalyze: true, autoStrava: true };
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.7.2';
+const VERSION = '1.8.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -1737,7 +1737,7 @@ function webApp() {
     const b = S.builder;
     const labels = b.groups.length ? b.groups.map((k) => GROUPS.find((g) => g.key === k).label).join(" + ") : "Muscles picked by the AI";
     const level = (INTENSITY.find((i) => i.key === b.intensity) || INTENSITY[1]).label.toLowerCase();
-    return `<header class="bar"><button class="back" data-a="b-edit">‹ Settings</button></header>
+    return `<header class="bar"><button class="back" data-a="b-edit">‹ Options</button></header>
       <p class="kicker">✨ Your AI coach</p>
       <h1 class="title busy">Building your next workout…</h1>
       <p class="lead"><b>${esc(labels)}</b>, about ${b.minutes} min, ${level}${b.why ? `, based on ${esc(b.why)}` : ""}. Weights come from your last sessions.</p>
@@ -1751,12 +1751,14 @@ function webApp() {
     const busy = S.aiBusy === "plan";
     const total = p.exercises.reduce((n, x) => n + x.sets, 0);
     const replacing = S.session && S.session.entries.length;
-    const rows = p.exercises.map((x) => `<div class="ex plan-ex" data-a="open" data-v="${esc(x.id)}">
+    const rows = p.exercises.map((x) => `<div class="ex plan-ex pv-row" data-a="open" data-v="${esc(x.id)}">
         <div class="thumb" data-id="${esc(x.id)}">${imgTag(x.id, 0)}<span>${esc(initials(x.name))}</span></div>
         <div><div class="ex-name">${esc(x.name)}</div>
         <div class="ex-meta"><b>${x.sets} × ${x.reps}${x.w ? ` at ${fmtNum(x.w)} ${UNIT}` : ""}</b>, rest ${x.rest} s</div>
-        ${x.note ? `<div class="ex-meta">${esc(x.note)}</div>` : ""}</div></div>`).join("");
-    return `<header class="bar"><button class="back" data-a="b-edit">‹ Settings</button></header>
+        ${x.note ? `<div class="ex-meta">${esc(x.note)}</div>` : ""}</div>
+        <button class="pv-btn" data-a="preview" data-v="${esc(x.id)}" aria-label="Preview ${esc(x.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>`).join("");
+    return `<header class="bar"><button class="back" data-a="b-edit">‹ Options</button>
+        <button class="hbtn${S.armed === "plan-start" ? " armed" : ""}" data-a="plan-start">${S.armed === "plan-start" ? "Tap to replace" : "Start ›"}</button></header>
       <p class="kicker"><span class="badge-ai">${esc(p.by ? `✦ AI workout by ${p.by}` : "✦ AI workout")}</span></p>
       <h1 class="title">${esc(p.title)}</h1>
       <p class="lead">${esc(p.summary)}</p>
@@ -1765,6 +1767,7 @@ function webApp() {
       <h2>Exercises</h2><div class="list">${rows}</div>
       ${p.cooldown ? `<h2>Cool-down</h2><p>${esc(p.cooldown)}</p>` : ""}
       <button class="primary${S.armed === "plan-start" ? " armed" : ""}" data-a="plan-start">${S.armed === "plan-start" ? "Tap again to replace your current workout" : "Start this workout"}</button>
+      <button class="secondary" data-a="plan-start-add">Start and add exercises</button>
       <button class="secondary${busy ? " busy" : ""}" data-a="build" ${busy ? "disabled" : ""}>${busy ? "Building another…" : "Build another"}</button>
       <p class="muted small">${replacing ? "Starting replaces the workout in progress. " : ""}Weights without history are left for you to choose. AI suggestions can be wrong.</p>`;
   }
@@ -1899,12 +1902,66 @@ function webApp() {
     if (!items.length) return `<p class="empty-line">No exercises match these filters. Try another equipment or type.</p>`;
     return `<p class="muted small count">${items.length} exercise${items.length > 1 ? "s" : ""}</p><div class="list">${items.map(exRow).join("")}</div>`;
   }
+  function toWorkoutBtn() {
+    const n = S.session ? S.session.entries.length : 0;
+    return n ? `<button class="hbtn" data-a="tab" data-v="workout">✓ Workout (${n})</button>` : "";
+  }
+  // Open the exercise list for adding to the running workout, filtered to its muscle groups.
+  function addExercises() {
+    const keys = S.session ? sessionGroups(S.session).map((g) => g.key) : [];
+    S.tab = "train";
+    S.detailId = null;
+    S.q = "";
+    S.muscle = "all";
+    if (keys.length) { S.groups = new Set(keys); S.trainView = "list"; }
+    else S.trainView = "home";
+    render();
+  }
+
+  // Quick preview pop-up: the photo demo and the essentials, with a way into the full page. Closes itself after 10 s.
+  const PV_SECONDS = 10;
+  let pvTimer = null;
+  function closePreview() {
+    clearInterval(pvTimer);
+    pvTimer = null;
+    const el = $("#pv");
+    if (el) el.remove();
+  }
+  function openPreview(id) {
+    closePreview();
+    const e = S.byId[id];
+    if (!e) return;
+    want(id);
+    const last = lastSets(id);
+    const el = document.createElement("div");
+    el.id = "pv";
+    el.innerHTML = `<div class="pv-card" role="dialog" aria-modal="true" aria-label="Preview: ${esc(e.n)}">
+      <div class="pv-head"><b>${esc(e.n)}</b><button class="pv-x" data-a="pv-close" aria-label="Close preview">×</button></div>
+      <div class="stage pv-stage" data-frame="play">${e.has ? imgTag(e.id, 0, "f0") + imgTag(e.id, 1, "f1") : `<p class="noimg">No photos downloaded for this exercise yet.</p>`}</div>
+      <p class="small pv-meta">${esc(metaLine(e))}. Works <b>${esc(e.pm.map(cap).join(", "))}</b>.</p>
+      ${last ? `<p class="small muted pv-meta">Last time, ${esc(day(last.date))}: ${esc(fmtSets(last.sets))}</p>` : ""}
+      <div class="pv-actions"><button class="secondary" data-a="pv-close">Close</button><button class="primary" data-a="pv-open" data-v="${esc(id)}">Open exercise ›</button></div>
+      <div class="pv-bar" aria-hidden="true"><i></i></div>
+      <p class="pv-auto">Closes in <span>${PV_SECONDS}</span> s</p>
+    </div>`;
+    document.body.appendChild(el);
+    el.addEventListener("click", (ev) => { if (ev.target === el) closePreview(); });   // tap outside closes
+    const t0 = Date.now();
+    pvTimer = setInterval(() => {
+      const left = Math.max(0, PV_SECONDS - Math.floor((Date.now() - t0) / 1000));
+      const n = el.querySelector(".pv-auto span");
+      if (n) n.textContent = left;
+      if (Date.now() - t0 >= PV_SECONDS * 1000) closePreview();
+    }, 250);
+  }
+
   function renderList() {
     const groups = GROUPS.filter((g) => S.groups.has(g.key));
     const muscles = selectedMuscles().filter((m) => S.lib.some((e) => e.pm.includes(m)));
     const eqs = [...new Set(S.lib.map((e) => e.eq))];
-    return `<header class="bar"><button class="back" data-a="home">‹ Muscles</button></header>
+    return `<header class="bar"><button class="back" data-a="home">‹ Muscles</button>${toWorkoutBtn()}</header>
       <h1 class="title">${esc(groups.map((g) => g.label).join(" + "))}</h1>
+      ${S.session && S.session.entries.length ? `<p class="add-hint">Adding to <b>${esc(S.session.title || "your workout")}</b>: tap <b>+</b> on an exercise, then <b>Workout</b> at the top to go back.</p>` : ""}
       ${muscles.length > 1 ? `<div class="chips">${chip("muscle", "all", "All muscles")}${muscles.map((m) => chip("muscle", m, cap(m))).join("")}</div>` : ""}
       <div class="chips">${chip("eq", "all", "Any equipment")}${eqs.map((q) => chip("eq", q, EQ_LABEL[q] || cap(q))).join("")}</div>
       <div class="chips">${TYPES.map((t) => chip("type", t.key, t.label)).join("")}</div>
@@ -1924,7 +1981,7 @@ function webApp() {
     const on = inSession(e.id);
     const last = lastSets(e.id);
     const back = S.tab === "workout" ? "Workout" : S.tab === "history" ? "History" : "Exercises";
-    return `<header class="bar"><button class="back" data-a="close-detail">‹ ${back}</button></header>
+    return `<header class="bar"><button class="back" data-a="close-detail">‹ ${back}</button>${S.tab === "workout" ? "" : toWorkoutBtn()}</header>
       <h1 class="title">${esc(e.n)}</h1>
       <div class="stage" data-frame="play">${e.has ? imgTag(e.id, 0, "f0") + imgTag(e.id, 1, "f1") : `<p class="noimg">Photos not downloaded. Tap Update library on the Train tab.</p>`}</div>
       ${e.has ? `<div class="seg" role="group" aria-label="Demo frame">
@@ -1947,8 +2004,9 @@ function webApp() {
     const s = S.session;
     if (!s || !s.entries.length)
       return `<header class="bar"><h1 class="title">Workout</h1></header>
-        <div class="empty"><p>No exercises yet. Pick the muscles you want to train, then add exercises with +.</p>
-        <button class="primary" data-a="tab" data-v="train">Choose muscles</button></div>`;
+        <div class="empty"><p>No exercises yet. Pick the muscles you want to train and add exercises with <b>+</b>${S.ai.hasKey ? ", or let the AI coach build the whole workout" : ""}.</p>
+        <button class="primary" data-a="go-muscles">Choose muscles</button>
+        ${S.ai.hasKey && S.history.sessions.length ? `<button class="secondary ai" data-a="build-next-h">✨ Build next workout</button>` : ""}</div>`;
     const t = volume(s.entries.map((en) => ({ sets: en.sets.filter((x) => x.done) })));
     const entries = s.entries.map((en, ei) => {
       const last = lastSets(en.id);
@@ -1960,6 +2018,7 @@ function webApp() {
           <button class="x" data-a="rm-set" data-v="${ei}:${si}" aria-label="Remove set ${si + 1}">×</button></div>`).join("");
       return `<section class="entry">
         <div class="entry-head"><button class="entry-name" data-a="open" data-v="${esc(en.id)}">${esc(en.name)}</button>
+        <button class="pv-btn" data-a="preview" data-v="${esc(en.id)}" aria-label="Preview ${esc(en.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
         <button class="link small${S.armed === "rm" + ei ? " armed" : ""}" data-a="rm-entry" data-v="${ei}">${S.armed === "rm" + ei ? "Tap to remove" : "Remove"}</button></div>
         ${en.note ? `<p class="small coach-note">✨ ${esc(en.note)}${en.rest ? ` Rest ${en.rest} s.` : ""}</p>` : ""}
         ${last ? `<p class="muted small">Last time, ${esc(day(last.date))}: ${esc(fmtSets(last.sets))}</p>` : `<p class="muted small">First time logging this one.</p>`}
@@ -1967,10 +2026,10 @@ function webApp() {
         ${rows}
         <button class="link" data-a="add-set" data-v="${ei}">Add set</button></section>`;
     }).join("");
-    return `<header class="bar"><h1 class="title">${esc(s.title || "Workout")}</h1><span class="muted" id="elapsed">${elapsed(s.start)}</span></header>
-      <p class="muted small" id="totals">${plural(t.n, "set")} done${t.v ? `, ${fmtNum(t.v)} ${UNIT} lifted` : ""}. Tap ✓ after each set to start the rest timer.</p>
+    return `<header class="bar"><h1 class="title">${esc(s.title || "Workout")}</h1><button class="hbtn" data-a="add-ex">＋ Add exercises</button></header>
+      <p class="muted small" id="totals"><span id="elapsed">${elapsed(s.start)}</span>, ${plural(t.n, "set")} done${t.v ? `, ${fmtNum(t.v)} ${UNIT} lifted` : ""}. Tap ✓ after each set to start the rest timer; the eye shows a quick preview.</p>
       ${entries}
-      <button class="secondary" data-a="tab" data-v="train">Add exercise</button>
+      <button class="secondary" data-a="add-ex">＋ Add exercises</button>
       <button class="primary${S.armed === "finish" ? " armed" : ""}" data-a="finish">${S.armed === "finish" ? "Tap again to save" : "Finish workout"}</button>
       <button class="link danger${S.armed === "discard" ? " armed" : ""}" data-a="discard">${S.armed === "discard" ? "Tap again to discard" : "Discard workout"}</button>`;
   }
@@ -2480,6 +2539,15 @@ function webApp() {
     home: () => { S.trainView = "home"; render(); },
     filter: (v) => { const i = v.indexOf("|"); S[v.slice(0, i)] = v.slice(i + 1); render(); },
     open: (v) => { S.detailId = v; render(); },
+    preview: (v) => openPreview(v),
+    "pv-close": () => closePreview(),
+    "pv-open": (v) => { closePreview(); S.detailId = v; render(); },
+    "add-ex": () => addExercises(),
+    "go-muscles": () => { S.tab = "train"; S.detailId = null; S.trainView = "home"; render(); },
+    "plan-start-add": () => {
+      const go = () => { startPlan(); addExercises(); };
+      return S.session && S.session.entries.length ? arm("plan-start-add", go) : go();
+    },
     "close-detail": () => { S.detailId = null; render(); },
     add: (v) => {
       if (inSession(v)) {
@@ -2781,6 +2849,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:var(--band,env(safe
 #last .dots{gap:3px;flex:none}#last .dot{width:7px;height:7px}
 .hbtn{flex:none;background:var(--accent);color:var(--accent-ink);font:700 calc(15px * var(--ts))/1 var(--body);padding:9px 14px;border-radius:999px;white-space:nowrap;text-align:center}
 .hbtn:disabled{opacity:.4}
+.hbtn.armed{background:var(--ink);color:var(--bg)!important;text-decoration:none}
 #app{max-width:640px;margin:0 auto;padding:0 16px 32px}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:inherit}
 button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -2799,7 +2868,27 @@ p{margin:0 0 10px}
 .lead{color:var(--muted);margin-bottom:16px}
 .bar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;position:sticky;top:var(--band,env(safe-area-inset-top,0px));background:var(--bg);z-index:5}
 .bar .title{margin:10px 0}
-.back{font-weight:600;color:var(--accent);padding:10px 0}
+.back{display:inline-flex;align-items:center;gap:2px;font:600 calc(15px * var(--ts))/1 var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);
+  padding:8px 13px 8px 10px;border-radius:999px;white-space:nowrap}
+.bar .back:first-child{margin-right:auto}
+.add-hint{font-size:calc(14px * var(--ts));background:var(--surface);border-left:3px solid var(--accent);border-radius:8px;padding:8px 10px;margin:0 0 10px}
+.pv-btn{flex:none;width:34px;height:34px;border-radius:17px;display:grid;place-items:center;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.pv-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.entry-head{align-items:center}.entry-head .entry-name{flex:1;text-align:left}
+.plan-ex.pv-row{grid-template-columns:64px 1fr 34px}
+#pv{position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px}
+.pv-card{width:100%;max-width:440px;background:var(--surface);color:var(--ink);border-radius:18px;padding:14px 14px 10px;box-shadow:0 12px 40px rgba(0,0,0,.35);overflow:hidden}
+.pv-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px}
+.pv-head b{font:800 calc(21px * var(--ts))/1.15 var(--display)}
+.pv-x{flex:none;width:32px;height:32px;border-radius:16px;background:var(--bg);font-size:22px;line-height:1;text-align:center}
+.pv-stage{margin:0 0 8px}
+.pv-meta{margin:0 0 4px}
+.pv-actions{display:grid;grid-template-columns:1fr 1.4fr;gap:8px;margin-top:10px}
+.pv-actions .primary,.pv-actions .secondary{margin:0;white-space:nowrap;font-size:calc(17px * var(--ts));padding:13px 10px}
+.pv-bar{height:4px;border-radius:2px;background:var(--line);margin:12px 0 4px;overflow:hidden}
+.pv-bar i{display:block;height:100%;background:var(--accent);transform-origin:left;animation:pvbar 10s linear forwards}
+@keyframes pvbar{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+.pv-auto{font-size:12px;color:var(--muted);text-align:center;margin:0}
 .link{color:var(--accent);font-weight:600;padding:10px 0}
 .link.danger{color:var(--muted)}
 .armed{color:var(--accent)!important;text-decoration:underline}

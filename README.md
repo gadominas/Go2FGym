@@ -23,7 +23,7 @@ Runs in [Scriptable](https://scriptable.app) and works fully offline.
   <img src="docs/screenshots/01-pick-muscles.png" width="180" alt="Pick muscle groups by tapping weight plates">
   <img src="docs/screenshots/03-exercise-demo.png" width="180" alt="Exercise with start-to-end photo demo">
   <img src="docs/screenshots/05-log-sets.png" width="180" alt="Logging sets with the rest timer running">
-  <img src="docs/screenshots/04-steps-and-progress.png" width="180" alt="Steps, last time and progress chart">
+  <img src="docs/screenshots/17-exercise-preview.png" width="180" alt="Quick exercise preview pop-up with a 10-second countdown">
 </p>
 
 ## Why
@@ -40,6 +40,8 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
 | 🖼 **See it done** | A start-to-end photo demo, numbered steps, and the muscles each exercise works. |
 | 🏠 **Made for home** | 466 exercises for bodyweight, dumbbells, barbell and resistance bands. Own kettlebells, an E-Z bar or a medicine ball? Switch them on in **Settings › Library**. |
 | ✍️ **Fast logging** | Weight and reps are prefilled from last time. Change what's different, tap ✓, done. |
+| ＋ **Add as you go** | **＋ Add exercises** in the workout header opens the list for that workout's muscles; **✓ Workout** takes you straight back. |
+| 👁 **Quick preview** | The eye on each exercise in your workout shows it moving in a pop-up, with **Open exercise** for the full page. It closes itself after 10 seconds. |
 | ⏱ **Rest timer** | Ticking a set starts a countdown with a beep (90 s, adjustable in Settings). Add 30 s or skip. |
 | 💾 **Nothing lost** | An unfinished workout comes back when you reopen the app. History is mirrored to iCloud Drive. |
 | ✈️ **Offline** | One download of about 36 MB, then no network needed. |
@@ -93,6 +95,10 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
   <img src="docs/screenshots/02-exercise-list.png" width="180" alt="Exercise list filtered by muscle and equipment">
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/04-steps-and-progress.png" width="180" alt="Steps, last time and progress chart">
+</p>
+
 ## Setting up the AI coach
 
 Uses Claude or OpenAI with **your own API key**. Everything else in the app works without it, and the AI buttons stay hidden until you add a key.
@@ -124,12 +130,14 @@ Every version is listed in the **[changelog](CHANGELOG.md)**. The version you ha
 | Narrow the list | Use the muscle, equipment and type chips, or search |
 | See how it's done | Tap an exercise. **Start**, **Play** and **End** control the demo. |
 | Add to today's workout | Tap **+** in the list, or **Add to workout** on the exercise |
+| Add more during a workout | **＋ Add exercises** at the top of the Workout tab, tap **+**, then **✓ Workout** at the top to go back |
+| Quickly see how an exercise is done | Tap the **eye** next to it in your workout or a built plan; **Open exercise** for the full page |
 | Log a set | Check weight and reps, then tap **✓**. Leave weight empty for bodyweight. |
 | Add or remove a set | **Add set** copies the previous one; **×** removes a set |
 | Finish | **Finish workout**, then tap again to save |
 | Do a past workout again | **History**, open the workout, **Repeat this workout** |
 | Let AI build a workout | **Train › ✨ Build a workout with AI** |
-| Get your next workout in one tap | **✨ Build next** at the top of History or Progress. It uses the coach's last suggestion (or your most-due muscles), your usual workout length and all your equipment, and goes straight to the plan. **‹ Settings** adjusts it. |
+| Get your next workout in one tap | **✨ Build next** at the top of History or Progress. It uses the coach's last suggestion (or your most-due muscles), your usual workout length and all your equipment, and goes straight to the plan. **‹ Options** adjusts it; **Start ›** or **Start and add exercises** begins it. |
 | Get AI feedback on a past workout | **History**, open it, **✨ Analyze with AI coach** |
 | See your month | **History › Calendar**, tap a day; **‹ ›** change month |
 | See your trends | **Progress** tab; tap a lift for its details |
