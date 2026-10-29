@@ -11,6 +11,8 @@
  * - Log sets (weight + reps), rest timer, finish and save to history.
  * - Everything works offline after the one-time library download.
  * - Run it as a widget to see your last workout and this week's count.
+ * - Opens on a 2.4 s launch screen with the Go2FGym dumbbell (app-blueprints · launch-screen).
+ *   The BLUEPRINTS block below lists every shared blueprint this app follows (Settings › Built with).
  *
  * Exercise data and photos: free-exercise-db by yuhonas (public domain,
  * Unlicense) — https://github.com/yuhonas/free-exercise-db
@@ -28,7 +30,7 @@ const COACH = { autoAnalyze: true, autoStrava: true };
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.10.0';
+const VERSION = '1.11.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -43,6 +45,7 @@ const BLUEPRINTS = [
   { id: 'in-app-updates', name: 'In-app updates', version: '1.0.0', since: '1.7.0' },
   { id: 'settings', name: 'Settings', version: '1.0.0', since: '1.7.0' },
   { id: 'ai-configuration', name: 'AI configuration', version: '1.0.0', since: '1.6.0' },
+  { id: 'launch-screen', name: 'Launch screen', version: '1.0.0', since: '1.11.0' },
 ];
 
 // ---------------------------------------------------------------- storage
@@ -170,7 +173,7 @@ const PALETTES = {
   slate:    { paper: "#1C2128", sheet: "#22272E", ink: "#E6EDF3", ink2: "#C5CED8", muted: "#9AA5B1", rule: "#373E47", signal: "#F0485F", signalWash: "#3D1E25", amber: "#E3B341", amberWash: "#3A2F12", danger: "#FF8A7A", done: "#45AD59", iron: "#12161B", scheme: "dark" },
   night:    { paper: "#16191C", sheet: "#22272B", ink: "#EEF1F4", ink2: "#CDD3D9", muted: "#9AA4AD", rule: "#353B41", signal: "#E8344B", signalWash: "#3A1A20", amber: "#F5C04A", amberWash: "#2D240C", danger: "#FF8F7A", done: "#45AD59", iron: "#0F1113", scheme: "dark" },
 };
-const PALETTE_CSS = Object.entries(PALETTES).map(([k, p]) => `[data-theme=${k}]{--paper:${p.paper};--sheet:${p.sheet};--ink:${p.ink};--ink-2:${p.ink2};--muted:${p.muted};--rule:${p.rule};--signal:${p.signal};--signal-wash:${p.signalWash};--amber:${p.amber};--amber-wash:${p.amberWash};--danger:${p.danger};--done:${p.done};--p-iron:${p.iron};color-scheme:${p.scheme}}`).join("\n");
+const PALETTE_CSS = Object.entries(PALETTES).map(([k, p]) => `[data-theme=${k}]{--paper:${p.paper};--sheet:${p.sheet};--ink:${p.ink};--ink-2:${p.ink2};--muted:${p.muted};--rule:${p.rule};--signal:${p.signal};--signal-wash:${p.signalWash};--amber:${p.amber};--amber-wash:${p.amberWash};--danger:${p.danger};--done:${p.done};--p-iron:${p.iron};--brand-f:${p.scheme === "dark" ? "#A3E635" : "#4D7C0F"};color-scheme:${p.scheme}}`).join("\n");
 
 // The look for the first paint, so the page never flashes the default palette (the page keeps Auto live afterwards).
 function lookState() {
@@ -952,12 +955,32 @@ function buildHTML(boot) {
   return `<!doctype html><html lang="en" data-theme="${look.shown}" data-font="${look.font}" style="--ts:${look.textSize}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark"><title>Go2FGym</title><style>${CSS}</style></head>
-<body class="d-${look.density}"><main id="app"></main>
+<body class="d-${look.density}">
+<div class="splash" id="splash" role="img" aria-label="Go2FGym. Pick. Lift. Log.">
+  <div class="spIcon"><svg viewBox="0 0 240 240" aria-hidden="true"><g transform="rotate(-20 120 112)">
+    <path class="spDraw" pathLength="100" d="M82 112 H158"></path>
+    <rect class="spPop" x="62" y="74" width="22" height="76" rx="8"></rect><rect class="spPop" x="156" y="74" width="22" height="76" rx="8"></rect>
+    <rect class="spDetail" x="44" y="90" width="14" height="44" rx="6"></rect><rect class="spDetail" x="182" y="90" width="14" height="44" rx="6"></rect>
+  </g>
+    <path class="spSweep" d="M50 184 H94 M70 204 H106"></path>
+  </svg></div>
+  <div class="spWord">Go2<span>F</span>Gym</div>
+  <div class="spTag">Pick. Lift. Log.</div>
+</div>
+<main id="app"></main>
 <div id="rest" hidden><div class="rest-fill"></div><span class="rest-label">Rest</span><span class="rest-time">0:00</span>
 <button data-a="rest-add">+30 s</button><button data-a="rest-skip">Skip</button></div>
 <div id="sat"></div><button id="last" data-a="last" hidden></button>
 <div id="toast" role="status" aria-live="polite"></div><nav id="tabs"></nav>
-<script>window.__BOOT=${data};(${webApp.toString()})();</script></body></html>`;
+<script>// Launch screen (app-blueprints · launch-screen 1.0.0): first, self-contained
+(function () {
+  var sp = document.getElementById("splash");
+  if (!sp) return;
+  function gone() { sp.classList.add("gone"); sp.setAttribute("aria-hidden", "true"); }
+  sp.addEventListener("click", gone);   // tap to skip
+  setTimeout(gone, 2900);               // out of the page once the CSS fade is done
+})();
+window.__BOOT=${data};(${webApp.toString()})();</script></body></html>`;
 }
 
 // ---------------------------------------------------------------- web UI (runs inside the WebView)
@@ -997,9 +1020,10 @@ function webApp() {
     progress: '<svg viewBox="0 0 24 24"><path d="M3 20h18M6 16v-4M11 16V8M16 16v-6M20 16V5"/></svg>',
   };
   const CLUB_URL = "https://www.instagram.com/7amclub__/";
-  const LOGO = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="var(--p-red)"/>' +
-    '<circle cx="12" cy="12" r="7.6" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3"/>' +
-    '<circle cx="12" cy="12" r="2.8" fill="var(--bg)"/></svg>';
+  // Go2FGym logo: the dumbbell on a dark tile (header mark, empty Workout tab, launch screen)
+  const LOGO_ART = '<g transform="rotate(-20 120 112)"><path d="M82 112 H158" stroke="#F6F7F9" stroke-width="13" stroke-linecap="round"/><rect x="62" y="74" width="22" height="76" rx="8" fill="#A3E635"/><rect x="156" y="74" width="22" height="76" rx="8" fill="#A3E635"/><rect x="44" y="90" width="14" height="44" rx="6" fill="#F6F7F9"/><rect x="182" y="90" width="14" height="44" rx="6" fill="#F6F7F9"/></g><path d="M50 184 H94 M70 204 H106" stroke="#2DD4BF" stroke-width="7" stroke-linecap="round"/>';
+  const LOGO = '<svg viewBox="0 0 240 240" aria-hidden="true">' + LOGO_ART + '</svg>';
+  const IDLE_MARK = '<svg class="idleMark" viewBox="0 0 240 240" role="img" aria-label="Go2FGym logo">' + LOGO_ART + '</svg>';
   const TABS = [
     { key: "train", label: "Train" },
     { key: "workout", label: "Workout" },
@@ -1129,7 +1153,7 @@ function webApp() {
     const last = pts[pts.length - 1];
     const label = last.w ? `Estimated one-rep max, now ${fmtNum(Math.round(last.v * 10) / 10)} ${UNIT}` : `Best set, now ${Math.round(last.v)} reps`;
     return `<h2>Progress</h2><p class="muted small">${esc(label)} across ${pts.length} workouts.</p>
-      <svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <svg class="trend" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
       <polyline points="${xy.map((p) => p.join(",")).join(" ")}"/>
       ${xy.map((p) => `<circle cx="${p[0]}" cy="${p[1]}" r="3"/>`).join("")}</svg>`;
   }
@@ -1827,7 +1851,7 @@ function webApp() {
   }
 
   function appHeader() {
-    return `<header class="brand"><span class="brand-mark">${LOGO}</span><span class="brand-name">Go2FGym</span>
+    return `<header class="brand"><span class="brand-mark">${LOGO}</span><span class="brand-name">Go2<span class="x">F</span>Gym</span>
       <button class="club" data-a="club" aria-label="Inspired by the 7AM Club community. Opens their Instagram.">Inspired by <b>7AM Club</b> <span aria-hidden="true">↗</span></button>
       <button class="icon" data-a="settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button></header>`;
   }
@@ -2143,7 +2167,7 @@ function webApp() {
     const s = S.session;
     if (!s || !s.entries.length)
       return `<header class="bar"><h1 class="title">Workout</h1></header>
-        <div class="empty"><p>No exercises yet. Pick the muscles you want to train and add exercises with <b>+</b>${S.ai.hasKey ? ", or let the AI coach build the whole workout" : ""}.</p>
+        <div class="empty">${IDLE_MARK}<p>No exercises yet. Pick the muscles you want to train and add exercises with <b>+</b>${S.ai.hasKey ? ", or let the AI coach build the whole workout" : ""}.</p>
         <button class="primary" data-a="go-muscles">Choose muscles</button>
         ${S.ai.hasKey && S.history.sessions.length ? `<button class="secondary ai" data-a="build-next-h">✨ Build next workout</button>` : ""}</div>`;
     const t = volume(s.entries.map((en) => ({ sets: en.sets.filter((x) => x.done) })));
@@ -2222,7 +2246,7 @@ function webApp() {
     const open = forceOpen || S.openSession === s.id;
     return `<section class="sess${open ? " open" : ""}">
       <button class="sess-head" data-a="sess" data-v="${esc(s.id)}" aria-expanded="${open}">
-        <span><b>${esc(day(s.start))}${s.ai ? ' <i class="spark-mark" title="Analyzed by AI coach">✨</i>' : ""}</b><span class="muted small">${s.title ? `${esc(s.title)}, ` : ""}${s.end ? `${minutesBetween(s.start, s.end)} min, ` : ""}${plural(s.entries.length, "exercise")}, ${plural(v.n, "set")}${v.v ? `, ${fmtNum(v.v)} ${UNIT}` : ""}</span></span>
+        <span><b>${esc(day(s.start))}${s.ai ? ' <i class="ai-mark" title="Analyzed by AI coach">✨</i>' : ""}</b><span class="muted small">${s.title ? `${esc(s.title)}, ` : ""}${s.end ? `${minutesBetween(s.start, s.end)} min, ` : ""}${plural(s.entries.length, "exercise")}, ${plural(v.n, "set")}${v.v ? `, ${fmtNum(v.v)} ${UNIT}` : ""}</span></span>
         <span class="dots">${dotsFor(sessionGroups(s))}</span></button>
       ${open ? `<div class="sess-body">${s.entries.map((en) => `<div class="sess-ex">
           <button class="entry-name" data-a="open" data-v="${esc(en.id)}">${esc(en.name)}</button>
@@ -3046,7 +3070,9 @@ p{margin:0 0 10px}
 .muted{color:var(--muted)}.small{font-size:calc(14px * var(--ts))}
 .hero{font:800 calc(46px * var(--ts))/.95 var(--display);margin:14px 0 8px;letter-spacing:-.01em}
 .brand{display:flex;align-items:center;gap:8px;min-height:56px;padding:6px 0 8px;border-bottom:1px solid var(--line)}
-.brand-mark svg{display:block;width:24px;height:24px}
+.brand-mark svg{display:block;width:30px;height:30px;border-radius:8px;background:#0E1116;box-shadow:inset 0 0 0 1px rgba(246,247,249,.14)}
+.brand-name .x{color:var(--brand-f)}
+.idleMark{display:block;width:76px;height:76px;margin:0 auto 14px;border-radius:18px;background:#0E1116}
 .brand-name{font:800 calc(19px * var(--ts))/1 var(--display);margin-right:auto;letter-spacing:-.01em}
 .club{font-size:calc(13px * var(--ts));color:var(--muted);padding:8px 0 8px 8px;min-width:0;text-align:right;line-height:1.2}
 .club b{white-space:nowrap}
@@ -3157,9 +3183,9 @@ body.is-dragging{-webkit-user-select:none;user-select:none}
 .tags.quiet .tag{background:transparent;border:1px solid var(--line)}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--pc);box-shadow:inset 0 0 0 1px rgba(0,0,0,.25)}
 .steps{padding-left:22px;margin:0}.steps li{margin:0 0 10px;padding-left:4px}
-.spark{width:100%;height:70px;display:block}
-.spark polyline{fill:none;stroke:var(--accent);stroke-width:2.5;vector-effect:non-scaling-stroke}
-.spark circle{fill:var(--accent)}
+.trend{width:100%;height:70px;display:block}
+.trend polyline{fill:none;stroke:var(--accent);stroke-width:2.5;vector-effect:non-scaling-stroke}
+.trend circle{fill:var(--accent)}
 .cta{margin-top:18px}
 .ver{font-size:calc(12px * var(--ts));color:var(--muted);margin:14px 0 0;opacity:.8}
 #upd{position:fixed;inset:0;z-index:48;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}
@@ -3261,7 +3287,34 @@ textarea.search{resize:none;line-height:1.4}
 .int-light{background:rgba(46,139,62,.16);color:var(--done)}
 .int-moderate{background:rgba(242,183,5,.22);color:var(--ink)}
 .int-hard{background:rgba(200,16,46,.15);color:var(--accent)}
-.spark-mark{font-style:normal;font-size:calc(14px * var(--ts))}
+/* Launch screen (app-blueprints · launch-screen 1.0.0) */
+.splash{--sp-bg:#0E1116;--sp-ink:#F6F7F9;--sp-accent:#A3E635;--sp-accent2:#2DD4BF;--sp-muted:#9AA3AE;--sp-font:var(--display);
+  position:fixed;inset:0;z-index:90;background:var(--sp-bg);color:var(--sp-ink);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;cursor:pointer;
+  animation:spOut .4s ease 2.4s forwards}
+.splash.gone{display:none}
+.spIcon{width:148px;height:148px;opacity:0;transform:scale(.86);animation:spIn .5s cubic-bezier(.2,.9,.3,1.2) .05s forwards}
+.spIcon svg{width:100%;height:100%;display:block;overflow:visible}
+.spFrame{fill:none;stroke:var(--sp-ink);stroke-opacity:.35;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;opacity:0;animation:spFade .4s ease .25s forwards}
+.spDraw{fill:none;stroke:var(--sp-ink);stroke-width:13;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:100;stroke-dashoffset:100;animation:spDraw .8s ease-in-out .15s forwards}
+.spPop{fill:var(--sp-accent);transform-box:fill-box;transform-origin:center;transform:scale(0);animation:spPop .45s cubic-bezier(.3,1.7,.5,1) .75s forwards}
+.spDetail{fill:var(--sp-ink);opacity:0;animation:spFade .3s ease 1.05s forwards}
+.spSweep{fill:none;stroke:var(--sp-accent2);stroke-width:7;stroke-linecap:round;opacity:0;transform:translateX(var(--sp-sweep-from,-120px));animation:spSweep 1s ease-in-out .95s forwards}
+.spWord{font:800 40px/1 var(--sp-font,ui-rounded,-apple-system,system-ui,sans-serif);letter-spacing:-.02em;opacity:0;transform:translateY(10px);animation:spUp .45s ease 1.05s forwards}
+.spWord span{color:var(--sp-accent)}
+.spTag{font:600 15px/1.3 -apple-system,system-ui,sans-serif;letter-spacing:.06em;color:var(--sp-muted);opacity:0;transform:translateY(8px);animation:spUp .45s ease 1.4s forwards}
+@keyframes spIn{to{opacity:1;transform:scale(1)}}
+@keyframes spFade{to{opacity:1}}
+@keyframes spDraw{to{stroke-dashoffset:0}}
+@keyframes spPop{to{transform:scale(1)}}
+@keyframes spSweep{0%{opacity:0}15%{opacity:1}100%{opacity:1;transform:translateX(0)}}
+@keyframes spUp{to{opacity:1;transform:none}}
+@keyframes spOut{to{opacity:0;visibility:hidden}}
+@media (prefers-reduced-motion:reduce){
+  .splash *{animation:none!important;opacity:1!important;transform:none!important;stroke-dashoffset:0!important}
+  .splash{animation:spOut .3s ease 1.6s forwards!important}
+}
+.ai-mark{font-style:normal;font-size:calc(14px * var(--ts))}
 .row{flex-wrap:wrap;gap:0 18px}
 .note{font-size:calc(14px * var(--ts));color:var(--muted);border-left:3px solid var(--accent);padding:2px 0 2px 10px;margin:4px 0 0}
 .disclaimer{background:var(--surface);border-radius:14px;padding:16px 16px 6px;margin:8px 0 6px}

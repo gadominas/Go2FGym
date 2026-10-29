@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240" role="img" aria-label="Go2FGym logo: a dumbbell tilted upward with lime plates and two teal motion lines">
+  <rect width="240" height="240" rx="54" fill="#0E1116"/>
+  <g transform="rotate(-20 120 112)">
+    <path d="M82 112 H158" stroke="#F6F7F9" stroke-width="13" stroke-linecap="round"/>
+    <rect x="62" y="74" width="22" height="76" rx="8" fill="#A3E635"/>
+    <rect x="156" y="74" width="22" height="76" rx="8" fill="#A3E635"/>
+    <rect x="44" y="90" width="14" height="44" rx="6" fill="#F6F7F9"/>
+    <rect x="182" y="90" width="14" height="44" rx="6" fill="#F6F7F9"/>
+  </g>
+  <path d="M50 184 H94 M70 204 H106" stroke="#2DD4BF" stroke-width="7" stroke-linecap="round"/>
+</svg>

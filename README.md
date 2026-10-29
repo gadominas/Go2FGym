@@ -1,11 +1,15 @@
-# Go2FGym
+<p align="center"><img src="docs/logo.svg" width="112" alt="Go2FGym logo: a dumbbell tilted upward with lime plates and two teal motion lines"></p>
+
+<h1 align="center">Go2FGym</h1>
+<p align="center"><b>Pick. Lift. Log.</b></p>
 
 **Go to the f\*\*\*g gym.** Your strength coach in your pocket: open it, tap the muscles you want to train, and lift. Go2FGym shows you how every exercise is done, remembers what you lifted last time, and with one tap builds your next workout for you.
 
 <p align="center">
-  <img src="docs/screenshots/01-pick-muscles.png" width="250" alt="Pick the muscles to train by tapping weight plates">
-  <img src="docs/screenshots/09-ai-plan.png" width="250" alt="A workout built by the AI coach from your history">
-  <img src="docs/screenshots/05-log-sets.png" width="250" alt="Logging sets with weights prefilled and the rest timer running">
+  <img src="docs/screenshots/01-pick-muscles.png" width="200" alt="Pick the muscles to train by tapping weight plates">
+  <img src="docs/screenshots/launch.png" width="200" alt="Launch screen: the Go2FGym dumbbell draws itself, then the tagline Pick. Lift. Log.">
+  <img src="docs/screenshots/09-ai-plan.png" width="200" alt="A workout built by the AI coach from your history">
+  <img src="docs/screenshots/05-log-sets.png" width="200" alt="Logging sets with weights prefilled and the rest timer running">
 </p>
 
 - **No more planning.** ✨ **Build next** turns your training history into today's workout in seconds. Weights, sets and rest are already filled in.
@@ -89,9 +93,11 @@ See your month at a glance and watch the numbers go up.
 
 Settings apply instantly, and new versions arrive in the app.
 
+- **Launch screen.** Go2FGym opens on its logo for 2.4 seconds: the dumbbell draws itself, then "Pick. Lift. Log." Tap to skip; with Reduce Motion it appears without movement. It is the shared [launch-screen](https://github.com/gadominas/app-blueprints/blob/main/blueprints/launch-screen.md) blueprint, so all the apps start the same way.
+
 <table>
 <tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/14-settings.png" width="240" alt="Settings: equipment, units, rest timer, colours and layout"><br><b>Settings</b><br><sub>Equipment, units, rest timer, colours and layout.</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/07-dark-mode.png" width="240" alt="Dark mode"><br><b>Light or dark</b><br><sub>Follows your iPhone, or pick one of six palettes.</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/15-ai-settings.png" width="240" alt="AI settings"><br><b>AI settings</b><br><sub>Claude or OpenAI, any model, token usage.</sub></td></tr>
-<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/16-update.png" width="240" alt="In-app update sheet"><br><b>In-app updates</b><br><sub>New versions offered with their best features.</sub></td></tr>
+<tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/16-update.png" width="240" alt="In-app update sheet"><br><b>In-app updates</b><br><sub>New versions offered with their best features.</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/launch.png" width="240" alt="Launch screen: the Go2FGym dumbbell and the tagline Pick. Lift. Log."><br><b>Launch screen</b><br><sub>The dumbbell draws itself; tap to skip.</sub></td></tr>
 </table>
 
 ## Setting up the AI coach
@@ -172,7 +178,7 @@ Every version is listed in the **[changelog](CHANGELOG.md)**. The version you ha
 - **[Scriptable](https://scriptable.app)** by Simon B. Støvring: the iOS app that runs Go2FGym, providing the web view, files, Keychain and widgets.
 - **[Claude API](https://www.anthropic.com/api)** (Anthropic) and **[OpenAI API](https://platform.openai.com)**: the optional AI coach, with your own key.
 - **[GitHub](https://github.com/gadominas/Go2FGym)**: hosts the app, the one-line installer and `releases.json` for in-app updates.
-- **[app-blueprints](https://github.com/gadominas/app-blueprints)**: shared patterns for Settings, AI configuration and in-app updates (see [docs/BLUEPRINTS.md](docs/BLUEPRINTS.md)).
+- **[app-blueprints](https://github.com/gadominas/app-blueprints)**: shared patterns for Settings, AI configuration, in-app updates and the launch screen (see [docs/BLUEPRINTS.md](docs/BLUEPRINTS.md)). Go2FGym follows all four; **Settings › Built with** lists them with their versions, and docs/BLUEPRINTS.md adds the deviations.
 
 No other libraries: the whole app is one file of plain JavaScript, HTML and CSS.
 
