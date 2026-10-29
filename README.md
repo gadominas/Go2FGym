@@ -84,7 +84,7 @@ See your month at a glance and watch the numbers go up.
 - **Calendar:** coloured dots show the muscle groups you trained each day.
 - **Progress:** weekly sets by muscle group, muscle balance with the most-due group, your streak, and a trend for every main lift.
 - **History:** every workout set by set, **Repeat this workout**, and CSV export.
-- **Widget and last-workout chip:** your last session at a glance.
+- **Widget and last-workout chip:** your last session and this week at a glance, on the Home Screen in every size and on the Lock Screen, in the same widget frame as the author's other apps.
 
 <table>
 <tr><td align="center" valign="top" width="33%"><img src="docs/screenshots/06-history.png" width="240" alt="Calendar: Dots for the muscle groups trained each day."><br><b>Calendar</b><br><sub>Dots for the muscle groups trained each day.</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/11-progress.png" width="240" alt="Progress: Weekly sets and which muscles are most due."><br><b>Progress</b><br><sub>Weekly sets and which muscles are most due.</sub></td><td align="center" valign="top" width="33%"><img src="docs/screenshots/13-lifts.png" width="240" alt="Your lifts: Estimated one-rep max trend for each lift."><br><b>Your lifts</b><br><sub>Estimated one-rep max trend for each lift.</sub></td></tr>

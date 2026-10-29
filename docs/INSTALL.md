@@ -33,10 +33,12 @@ From now on everything works offline.
 
 ## 3. Optional: add the widget
 
-1. Long-press your Home Screen, tap **Edit › Add Widget**, choose **Scriptable**, and pick the small size.
+1. Long-press your Home Screen, tap **Edit › Add Widget**, choose **Scriptable**, and pick any size: small, medium or large.
 2. Long-press the new widget, tap **Edit Widget**, and set **Script** to *Go2FGym* and **When Interacting** to *Run Script*.
 
-The widget shows your last workout and how many you've done this week. Tapping it opens the app.
+The widget carries the Go2FGym logo and shows your last workout (Today, Yesterday or how many days ago, its muscle groups and sets) and how many you've done this week. Medium adds this week's other workouts; large also shows the week as dots, Monday to Sunday. Tapping it opens the app. Open Go2FGym once after updating so the widget picks up your workouts straight away.
+
+The same works on the Lock Screen: customise it, tap **Add Widgets**, choose **Scriptable**, and set the script to *Go2FGym*. How often the widget asks iOS to refresh is in **Settings › Widget**.
 
 **Tip:** for an app-like icon, tap *⋯* on *Go2FGym* in Scriptable, then *Add to Home Screen*.
 
