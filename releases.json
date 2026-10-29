@@ -4,6 +4,40 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.12.0",
+      "date": "2026-10-29",
+      "title": "Your week at a glance",
+      "highlights": [
+        {
+          "icon": "🏋️",
+          "title": "A widget with the logo",
+          "text": "The Home Screen widget wears the Go2FGym dumbbell and colours, in every size."
+        },
+        {
+          "icon": "📅",
+          "title": "Your week at a glance",
+          "text": "Last workout, this week’s sessions and, on the large widget, the week as dots."
+        },
+        {
+          "icon": "🔒",
+          "title": "Lock Screen too",
+          "text": "Add Go2FGym to the Lock Screen to see your last workout in one line."
+        }
+      ],
+      "changes": [
+        "New widget in the shared frame of the author’s apps (app-blueprints · widgets 1.0.0): logo tile and name at the top, one hero, rows and a footer, on the logo’s dark ground",
+        "Shows the last workout (Today, Yesterday or N days ago, its muscle groups and sets) and how many workouts this week; medium adds this week’s other workouts, large also the week as dots",
+        "Small, medium and large Home Screen widgets, plus inline, circular and rectangular Lock Screen widgets",
+        "The widget reads a small snapshot the app saves when it opens and after a workout is saved or deleted, so it is fast and works offline",
+        "Settings › Widget: how often to ask iOS to refresh the widget",
+        "Settings › Built with lists the widgets blueprint"
+      ],
+      "fixes": [
+        "A widget never shows Scriptable’s error text: a problem shows the empty state or a plain “Tap to open”",
+        "Widget runs no longer touch the AI settings file (the old key migration now runs only when the app opens)"
+      ]
+    },
+    {
       "version": "1.11.0",
       "date": "2026-10-29",
       "title": "Your workout, live",

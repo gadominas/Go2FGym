@@ -2,6 +2,26 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.12.0 (2026-10-29): Your week at a glance
+
+- 🏋️ **A widget with the logo**: The Home Screen widget wears the Go2FGym dumbbell and colours, in every size.
+- 📅 **Your week at a glance**: Last workout, this week’s sessions and, on the large widget, the week as dots.
+- 🔒 **Lock Screen too**: Add Go2FGym to the Lock Screen to see your last workout in one line.
+
+**Changes**
+
+- New widget in the shared frame of the author’s apps (app-blueprints · widgets 1.0.0): logo tile and name at the top, one hero, rows and a footer, on the logo’s dark ground
+- Shows the last workout (Today, Yesterday or N days ago, its muscle groups and sets) and how many workouts this week; medium adds this week’s other workouts, large also the week as dots
+- Small, medium and large Home Screen widgets, plus inline, circular and rectangular Lock Screen widgets
+- The widget reads a small snapshot the app saves when it opens and after a workout is saved or deleted, so it is fast and works offline
+- Settings › Widget: how often to ask iOS to refresh the widget
+- Settings › Built with lists the widgets blueprint
+
+**Fixes**
+
+- A widget never shows Scriptable’s error text: a problem shows the empty state or a plain “Tap to open”
+- Widget runs no longer touch the AI settings file (the old key migration now runs only when the app opens)
+
 ## 1.11.0 (2026-10-29): Your workout, live
 
 - ⏱ **Live workout clock**: Total time ticks at the top of your workout, always in view.
