@@ -2,6 +2,19 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.11.0 (2026-10-29): Pick. Lift. Log.
+
+- 🏋️ **A logo of its own**: A dumbbell on the rise: lime plates and two teal motion lines.
+- 🎬 **Launch screen**: The dumbbell draws itself and the tagline appears for about 2 seconds; tap to skip.
+- ✨ **Branded everywhere**: The logo sits in the header, on the empty Workout tab and in the README.
+
+**Changes**
+
+- New Go2FGym logo (dumbbell on the rise): docs/logo.svg and a 1024 px app icon, docs/icon-1024.png
+- Launch screen shown for 2.4 s with a short animation and the tagline "Pick. Lift. Log."; tap to skip; still with Reduce Motion (shared launch-screen blueprint 1.0.0)
+- Logo mark and Go2FGym wordmark in the header, the logo on the Workout tab when it is empty, and at the top of the README
+- Settings › Built with lists the launch-screen blueprint
+
 ## 1.10.0 (2026-10-29): Fewer mis-taps
 
 - ✅ **Complete in the corner**: The round green check sits at the top of each exercise, away from the set ticks.
