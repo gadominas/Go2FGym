@@ -2,6 +2,18 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.11.0 (2026-10-29): Your workout, live
+
+- ⏱ **Live workout clock**: Total time ticks at the top of your workout, always in view.
+- 🏋️ **Running totals**: Kilos lifted, sets, reps and exercises done update as you tick sets.
+- 🐄 **Fun milestones**: See what you've lifted so far: a grizzly bear, a dairy cow, a small car…
+
+**Changes**
+
+- The Workout header stays pinned and shows the total time, kg (or lb) lifted, sets, reps and completed exercises
+- A fun line compares your total to animals and vehicles, with the next milestone to beat
+- Totals update as you tick sets, complete exercises or edit a logged set
+
 ## 1.11.0 (2026-10-29): Pick. Lift. Log.
 
 - 🏋️ **A logo of its own**: A dumbbell on the rise: lime plates and two teal motion lines.

@@ -2163,6 +2163,46 @@ function webApp() {
   });
   document.addEventListener("pointercancel", endDrag);
 
+  // ------------------------------------------------ live workout stats (pinned in the Workout header)
+  const FUN = [   // [kg, one, many, emoji]
+    [70, "an adult person", "adult people", "🧍"], [100, "a newborn elephant", "newborn elephants", "🐘"],
+    [250, "a baby grand piano", "baby grand pianos", "🎹"], [300, "a grizzly bear", "grizzly bears", "🐻"],
+    [650, "a dairy cow", "dairy cows", "🐄"], [1100, "a small car", "small cars", "🚗"], [1500, "a hippo", "hippos", "🦛"],
+    [5500, "an African elephant", "African elephants", "🐘"], [8000, "a T. rex", "T. rexes", "🦖"],
+    [11000, "a school bus", "school buses", "🚌"], [36000, "a loaded truck", "loaded trucks", "🚛"], [150000, "a blue whale", "blue whales", "🐋"],
+  ];
+  function funLine(total) {
+    const kg = UNIT === "lb" ? total * 0.4536 : total;
+    if (kg < 1) return "💪 Tick your first set and the counting starts.";
+    let i = FUN.length - 1;
+    while (i >= 0 && FUN[i][0] > kg) i--;
+    const next = FUN[i + 1];
+    if (i < 0) return `${next[3]} ${Math.round((kg / next[0]) * 100)}% of the way to ${next[1]}.`;
+    const [w, one, many, emo] = FUN[i];
+    const x = Math.floor((kg / w) * 10) / 10;
+    return `${emo} You've lifted ${x < 1.1 ? one : `${fmtNum(x)} ${many}`}${next ? `. Next: ${next[1]} ${next[3]}` : ". Legendary."}`;
+  }
+  function clock(start) {
+    const sec = Math.max(0, Math.floor((Date.now() - new Date(start)) / 1000));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), ss = String(sec % 60).padStart(2, "0");
+    return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+  }
+  function wstatsInner(s) {
+    let sets = 0, reps = 0, kg = 0;
+    s.entries.forEach((en) => en.sets.forEach((x) => { if (x.done && x.r > 0) { sets++; reps += x.r; if (x.w) kg += x.w * x.r; } }));
+    const doneEx = s.entries.filter((x) => x.completed).length;
+    return `<div class="ws ws-time"><b id="wclock">${clock(s.start)}</b><span>time</span></div>
+      <div class="ws"><b>${fmtNum(Math.round(kg))}</b><span>${UNIT} lifted</span></div>
+      <div class="ws"><b>${sets}</b><span>${sets === 1 ? "set" : "sets"}</span></div>
+      <div class="ws"><b>${reps}</b><span>reps</span></div>
+      <div class="ws"><b>${doneEx}/${s.entries.length}</b><span>done</span></div>
+      <p class="wfun">${esc(funLine(kg))}</p>`;
+  }
+  function updateWStats() {
+    const el = $("#wstats");
+    if (el && S.session) el.innerHTML = wstatsInner(S.session);
+  }
+
   function renderWorkout() {
     const s = S.session;
     if (!s || !s.entries.length)
@@ -2211,8 +2251,9 @@ function webApp() {
           ${nextIdx !== ei && !started ? `<button class="chip" data-a="up-next" data-v="${ei}">↑ Up next</button>` : ""}
           <button class="link small danger${S.armed === "rm" + ei ? " armed" : ""}" data-a="rm-entry" data-v="${ei}">${S.armed === "rm" + ei ? "Tap to remove" : "Remove"}</button></div></section>`;
     }).join("");
-    return `<header class="bar"><h1 class="title">${esc(s.title || "Workout")}</h1><button class="hbtn" data-a="add-ex">＋ Add exercises</button></header>
-      <p class="muted small" id="totals"><span id="elapsed">${elapsed(s.start)}</span>, ${plural(t.n, "set")} done${t.v ? `, ${fmtNum(t.v)} ${UNIT} lifted` : ""}${s.entries.some((x) => x.completed) ? `, ${s.entries.filter((x) => x.completed).length} of ${s.entries.length} exercises complete` : ""}. Tap ✓ after each set and the green circle to complete an exercise; drag ⠿ to reorder.</p>
+    return `<header class="bar wbar"><h1 class="title">${esc(s.title || "Workout")}</h1><button class="hbtn" data-a="add-ex">＋ Add exercises</button>
+        <div class="wstats" id="wstats" aria-live="off">${wstatsInner(s)}</div></header>
+      <p class="muted small" id="totals">Tap ✓ after each set and the green circle to complete an exercise; drag ⠿ to reorder.</p>
       ${entries}
       <button class="secondary" data-a="add-ex">＋ Add exercises</button>
       <button class="primary${S.armed === "finish" ? " armed" : ""}" data-a="finish">${S.armed === "finish" ? "Tap again to save" : "Finish workout"}</button>
@@ -2669,6 +2710,8 @@ function webApp() {
     } else el.hidden = true;
     const e2 = $("#elapsed");
     if (e2 && S.session) e2.textContent = elapsed(S.session.start);
+    const wc = $("#wclock");
+    if (wc && S.session) wc.textContent = clock(S.session.start);
   }
 
   // ------------------------------------------------ interactions
@@ -2897,6 +2940,7 @@ function webApp() {
     if (!set) return;
     const n = num(t.value);
     set[k] = k === "r" ? (n == null ? null : Math.round(n)) : n;
+    if (set.done) updateWStats();
     saveDraft();
   });
 
@@ -3089,6 +3133,14 @@ p{margin:0 0 10px}
 .pv-btn{flex:none;width:34px;height:34px;border-radius:17px;display:grid;place-items:center;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
 .pv-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .entry-head{align-items:center}.entry-head .entry-name{flex:1;text-align:left}
+.wbar{flex-wrap:wrap;row-gap:6px;padding-bottom:8px;box-shadow:0 1px 0 var(--line)}
+.wbar .title{font-size:calc(26px * var(--ts));flex:1;min-width:0}
+.wstats{flex-basis:100%;display:grid;grid-template-columns:1.25fr 1.35fr 0.8fr 0.9fr 0.9fr;gap:6px}
+.ws{background:var(--surface);border-radius:10px;padding:6px 4px 5px;text-align:center;min-width:0}
+.ws b{display:block;font:800 calc(19px * var(--ts))/1.05 var(--display);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ws span{display:block;font-size:calc(10.5px * var(--ts));color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px;white-space:nowrap}
+.ws-time b{color:var(--accent)}
+.wfun{grid-column:1/-1;margin:0;font-size:calc(13px * var(--ts));color:var(--ink);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .drag{flex:none;width:28px;height:36px;margin-left:-8px;display:grid;place-items:center;color:var(--muted);touch-action:none;-webkit-user-select:none;user-select:none;cursor:grab}
 .drag svg{width:18px;height:18px;fill:currentColor}
 .entry{transition:transform .18s ease,box-shadow .18s ease}
