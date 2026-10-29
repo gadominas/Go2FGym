@@ -41,7 +41,8 @@ Gym apps assume a gym. At home you have a bench, a barbell, some dumbbells and t
 | 🏠 **Made for home** | 466 exercises for bodyweight, dumbbells, barbell and resistance bands. Own kettlebells, an E-Z bar or a medicine ball? Switch them on in **Settings › Library**. |
 | ✍️ **Fast logging** | Weight and reps are prefilled from last time. Change what's different, tap ✓, done. |
 | ⠿ **Your order** | Drag exercises by the ⠿ handle, or tap **↑ Up next** to put one right after the ones you've started (great for supersets). |
-| ✅ **Complete and move on** | **✓ Complete** folds an exercise into one line with kg lifted, reps, minutes and muscle group, then highlights and scrolls to the next one. |
+| ✅ **Complete and move on** | The round green check in an exercise's corner folds it into one line with kg lifted, reps, minutes and muscle group, then highlights and scrolls to the next one. Tap a folded line to review its sets; **↺ Resume** reopens it. |
+| 👆 **Tap to start** | Tap an exercise or start typing in it and it's marked **In progress**. |
 | ＋ **Add as you go** | **＋ Add exercises** in the workout header opens the list for that workout's muscles; **✓ Workout** takes you straight back. |
 | 👁 **Quick preview** | The eye on each exercise in your workout shows it moving in a pop-up, with **Open exercise** for the full page. It closes itself after 10 seconds. |
 | ⏱ **Rest timer** | Ticking a set starts a countdown with a beep (90 s, adjustable in Settings). Add 30 s or skip. |
@@ -135,7 +136,8 @@ Every version is listed in the **[changelog](CHANGELOG.md)**. The version you ha
 | Add to today's workout | Tap **+** in the list, or **Add to workout** on the exercise |
 | Add more during a workout | **＋ Add exercises** at the top of the Workout tab, tap **+**, then **✓ Workout** at the top to go back |
 | Change the order of exercises | Drag the **⠿** handle, or tap **↑ Up next** on the one you want to do next |
-| Finish an exercise | **✓ Complete**; tap its one-line summary to reopen it |
+| Finish an exercise | The round green **✓** in its top-right corner |
+| Check a finished exercise | Tap its one-line summary to see the sets; **↺ Resume** to keep working on it |
 | Quickly see how an exercise is done | Tap the **eye** next to it in your workout or a built plan; **Open exercise** for the full page |
 | Log a set | Check weight and reps, then tap **✓**. Leave weight empty for bodyweight. |
 | Add or remove a set | **Add set** copies the previous one; **×** removes a set |

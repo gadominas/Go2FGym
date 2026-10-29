@@ -2,6 +2,24 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.10.0 (2026-10-29): Fewer mis-taps
+
+- ✅ **Complete in the corner**: The round green check sits at the top of each exercise, away from the set ticks.
+- 👆 **Tap to start**: Tap an exercise or start typing in it and it's marked In progress.
+- 🔍 **Review finished exercises**: Tap a completed exercise to see its sets; ↺ Resume only when you mean it.
+
+**Changes**
+
+- Complete moved from next to Add set to a round green check in the top-right corner of each exercise; Remove moved to the bottom row
+- Tapping an exercise card, or typing in its weight or reps, marks it In progress and highlights it; an exercise that was only tapped steps back when you start another
+- Tapping a completed exercise opens a review with every set and the start and finish time, plus Exercise page and ↺ Resume
+- ↺ Resume reopens a completed exercise as In progress
+
+**Fixes**
+
+- Complete sat right below the last set's tick, so it was easy to hit by mistake
+- Tapping a completed exercise reopened it instead of just showing it
+
 ## 1.9.0 (2026-10-29): Train in your own order
 
 - ⠿ **Drag to reorder**: Hold the ⠿ handle on any exercise and drag it where you want it.

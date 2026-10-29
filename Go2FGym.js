@@ -28,7 +28,7 @@ const COACH = { autoAnalyze: true, autoStrava: true };
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.9.0';
+const VERSION = '1.10.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -1017,7 +1017,7 @@ function webApp() {
     imgs: {}, pending: new Set(), queue: new Set(),
     rest: { end: 0, total: 0, beeped: true },
     openSession: null, armed: null, sync: null,
-    histView: "calendar", cal: null, stravaMode: {}, focusId: null,
+    histView: "calendar", cal: null, stravaMode: {}, focusId: null, reviewIds: new Set(),
     consent: !!(BOOT.consent && BOOT.consent.version === CFG.disclaimerVersion),
     showDisclaimer: false,
     ai: {
@@ -2003,10 +2003,34 @@ function webApp() {
   // ------------------------------------------------ workout order, completing exercises, drag and drop
   const firstOpen = (list) => { const i = list.findIndex((x) => !x.completed); return i < 0 ? list.length : i; };
   // Where "Up next" puts an exercise: right after the exercises already started, or first among the open ones.
+  // In progress: tapped or typed into, or with a ticked set (and not completed).
+  const inProgress = (en) => !en.completed && (!!en.active || en.sets.some((y) => y.done));
+  const statusText = (en) => (inProgress(en) ? "● In progress" : S.focusId === en.id ? "▶ Up now" : "");
+  // Tapping a card (or typing in it) starts that exercise. Untouched ones that were only tapped stop being "in progress".
+  function activate(ei, rerender) {
+    const list = S.session && S.session.entries;
+    const en = list && list[ei];
+    if (!en || en.completed) return;
+    if (en.active && S.focusId === en.id) return;
+    list.forEach((x) => { if (x !== en && x.active && !x.sets.some((y) => y.done)) x.active = false; });
+    en.active = true;
+    en.startedAt = en.startedAt || Date.now();
+    S.focusId = en.id;
+    saveDraft();
+    if (rerender) return render();
+    document.querySelectorAll("#app .entry[data-ei]").forEach((el) => {   // light update: keeps the keyboard open
+      const x = list[+el.dataset.ei];
+      if (!x || x.completed) return;
+      el.classList.toggle("focus", S.focusId === x.id);
+      el.classList.toggle("active", inProgress(x));
+      const st = el.querySelector(".entry-status");
+      if (st) st.textContent = statusText(x);
+    });
+  }
   function upNextIndex(ei) {
     const list = S.session.entries.filter((_, i) => i !== ei);
     let at = -1;
-    list.forEach((x, i) => { if (!x.completed && x.sets.some((y) => y.done)) at = i; });
+    list.forEach((x, i) => { if (inProgress(x)) at = i; });
     return at >= 0 ? at + 1 : firstOpen(list);
   }
   function moveEntry(from, to) {
@@ -2040,7 +2064,8 @@ function webApp() {
     en.doneAt = now;
     en.startedAt = en.startedAt || Math.min(...en.sets.filter((x) => x.t).map((x) => x.t), now);
     moveEntry(ei, firstOpen(list.filter((_, i) => i !== ei)));   // completed ones collect at the top
-    const next = list.find((x) => !x.completed && x.sets.some((y) => y.done)) || list.find((x) => !x.completed);
+    en.active = false;
+    const next = list.find((x) => inProgress(x)) || list.find((x) => !x.completed);
     S.focusId = next ? next.id : null;
     saveDraft();
     render();
@@ -2099,6 +2124,19 @@ function webApp() {
     render();
   }
   document.addEventListener("pointerup", endDrag);
+  document.addEventListener("click", (ev) => {
+    if (S.tab !== "workout" || S.detailId || !S.session) return;
+    const card = ev.target.closest && ev.target.closest("#app .entry[data-ei]:not(.done-row)");
+    if (!card) return;
+    const btn = ev.target.closest("[data-a]");
+    if (btn && btn.dataset.a !== "done") return;   // other buttons do their own thing
+    const typing = !!ev.target.closest("input");
+    activate(+card.dataset.ei, !btn && !typing);   // a set tick re-renders by itself
+  }, true);
+  document.addEventListener("focusin", (ev) => {
+    const inp = ev.target.closest && ev.target.closest("#app .entry[data-ei] input");
+    if (inp && S.tab === "workout") activate(+inp.closest(".entry").dataset.ei, false);
+  });
   document.addEventListener("pointercancel", endDrag);
 
   function renderWorkout() {
@@ -2114,13 +2152,20 @@ function webApp() {
       if (en.completed) {
         const sum = entrySummary(en);
         const g = groupOf(en.id);
-        return `<section class="entry done-row" data-ei="${ei}">${grip}
-          <button class="done-main" data-a="reopen" data-v="${ei}" aria-label="${esc(en.name)}, completed. Tap to reopen.">
+        const open = S.reviewIds.has(en.id);
+        const when = en.startedAt ? new Date(en.startedAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "";
+        return `<section class="entry done-row${open ? " open" : ""}" data-ei="${ei}"><div class="done-line">${grip}
+          <button class="done-main" data-a="review" data-v="${esc(en.id)}" aria-expanded="${open}" aria-label="${esc(en.name)}, completed. Tap to ${open ? "hide" : "see"} the sets.">
           <span class="ck">✓</span><b>${esc(en.name)}</b>
-          <span class="dl-meta">${g ? `<i class="dot pl-${g.plate}" title="${g.label}"></i>` : ""}${esc(sum)}${g ? ` · ${g.label}` : ""}</span></button></section>`;
+          <span class="dl-meta">${g ? `<i class="dot pl-${g.plate}" title="${g.label}"></i>` : ""}${esc(sum)}${g ? ` · ${g.label}` : ""}</span></button></div>
+          ${open ? `<div class="done-detail">
+            <div class="done-sets">${en.sets.filter((x) => x.done && x.r > 0).map((x, i) => `<span class="ds"><b>${i + 1}</b> ${x.w ? `${fmtNum(x.w)} ${UNIT} × ` : ""}${x.r}</span>`).join("")}</div>
+            ${when ? `<p class="muted small">Started ${esc(when)}${en.doneAt ? `, completed ${esc(new Date(en.doneAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }))}` : ""}.</p>` : ""}
+            <div class="done-acts"><button class="link" data-a="open" data-v="${esc(en.id)}">Exercise page ›</button>
+            <button class="chip" data-a="reopen" data-v="${ei}">↺ Resume</button></div></div>` : ""}</section>`;
       }
       const last = lastSets(en.id);
-      const started = en.sets.some((x) => x.done);
+      const started = inProgress(en);
       const focus = S.focusId === en.id;
       const nextIdx = upNextIndex(ei);
       const rows = en.sets.map((x, si) => `<div class="set-row${x.done ? " done" : ""}">
@@ -2129,21 +2174,21 @@ function webApp() {
           <input data-in="r" data-ei="${ei}" data-si="${si}" inputmode="numeric" placeholder="0" value="${x.r == null ? "" : esc(x.r)}" aria-label="Set ${si + 1} reps">
           <button class="tick" data-a="done" data-v="${ei}:${si}" aria-label="${x.done ? "Mark set as not done" : "Mark set as done"}">✓</button>
           <button class="x" data-a="rm-set" data-v="${ei}:${si}" aria-label="Remove set ${si + 1}">×</button></div>`).join("");
-      return `<section class="entry${focus ? " focus" : ""}" data-ei="${ei}">
-        ${focus || started ? `<p class="entry-status">${started ? "● In progress" : "▶ Up now"}</p>` : ""}
+      return `<section class="entry${focus ? " focus" : ""}${started ? " active" : ""}" data-ei="${ei}">
+        <p class="entry-status">${statusText(en)}</p>
         <div class="entry-head">${grip}<button class="entry-name" data-a="open" data-v="${esc(en.id)}">${esc(en.name)}</button>
         <button class="pv-btn" data-a="preview" data-v="${esc(en.id)}" aria-label="Preview ${esc(en.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
-        <button class="link small${S.armed === "rm" + ei ? " armed" : ""}" data-a="rm-entry" data-v="${ei}">${S.armed === "rm" + ei ? "Tap to remove" : "Remove"}</button></div>
+        <button class="cmp-btn" data-a="complete" data-v="${ei}" aria-label="Complete ${esc(en.name)}" title="Complete exercise"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button></div>
         ${en.note ? `<p class="small coach-note">✨ ${esc(en.note)}${en.rest ? ` Rest ${en.rest} s.` : ""}</p>` : ""}
         ${last ? `<p class="muted small">Last time, ${esc(day(last.date))}: ${esc(fmtSets(last.sets))}</p>` : `<p class="muted small">First time logging this one.</p>`}
         <div class="set-row head"><span>Set</span><span>${UNIT}</span><span>Reps</span><span></span><span></span></div>
         ${rows}
         <div class="entry-actions"><button class="link" data-a="add-set" data-v="${ei}">Add set</button>
           ${nextIdx !== ei && !started ? `<button class="chip" data-a="up-next" data-v="${ei}">↑ Up next</button>` : ""}
-          <button class="chip complete-btn" data-a="complete" data-v="${ei}">✓ Complete</button></div></section>`;
+          <button class="link small danger${S.armed === "rm" + ei ? " armed" : ""}" data-a="rm-entry" data-v="${ei}">${S.armed === "rm" + ei ? "Tap to remove" : "Remove"}</button></div></section>`;
     }).join("");
     return `<header class="bar"><h1 class="title">${esc(s.title || "Workout")}</h1><button class="hbtn" data-a="add-ex">＋ Add exercises</button></header>
-      <p class="muted small" id="totals"><span id="elapsed">${elapsed(s.start)}</span>, ${plural(t.n, "set")} done${t.v ? `, ${fmtNum(t.v)} ${UNIT} lifted` : ""}${s.entries.some((x) => x.completed) ? `, ${s.entries.filter((x) => x.completed).length} of ${s.entries.length} exercises complete` : ""}. Tap ✓ after each set; drag ⠿ to reorder, or ↑ Up next.</p>
+      <p class="muted small" id="totals"><span id="elapsed">${elapsed(s.start)}</span>, ${plural(t.n, "set")} done${t.v ? `, ${fmtNum(t.v)} ${UNIT} lifted` : ""}${s.entries.some((x) => x.completed) ? `, ${s.entries.filter((x) => x.completed).length} of ${s.entries.length} exercises complete` : ""}. Tap ✓ after each set and the green circle to complete an exercise; drag ⠿ to reorder.</p>
       ${entries}
       <button class="secondary" data-a="add-ex">＋ Add exercises</button>
       <button class="primary${S.armed === "finish" ? " armed" : ""}" data-a="finish">${S.armed === "finish" ? "Tap again to save" : "Finish workout"}</button>
@@ -2721,10 +2766,13 @@ function webApp() {
       toast(`${en.name} is up next`);
     },
     complete: (v) => completeEntry(+v),
+    review: (v) => { S.reviewIds.has(v) ? S.reviewIds.delete(v) : S.reviewIds.add(v); render(); },
     reopen: (v) => {
       const en = S.session.entries[+v];
       en.completed = false;
+      en.active = true;
       delete en.doneAt;
+      S.reviewIds.delete(en.id);
       S.focusId = en.id;
       saveDraft();
       render();
@@ -3024,8 +3072,19 @@ body.is-dragging{-webkit-user-select:none;user-select:none}
 .entry-status{margin:0 0 2px;font-size:calc(12px * var(--ts));font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:.05em}
 .entry-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0 8px}
 .entry-actions .link{margin-right:auto}
-.entry-actions .chip.complete-btn{background:var(--done);border-color:var(--done);color:#fff;font-weight:700}
-.done-row{display:flex;align-items:center;gap:4px;padding:6px 10px 6px 14px;opacity:.92}
+.cmp-btn{flex:none;width:40px;height:40px;border-radius:20px;border:2px solid var(--done);color:var(--done);display:grid;place-items:center;background:transparent}
+.cmp-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.entry.active .cmp-btn{background:color-mix(in srgb,var(--done) 16%,transparent)}
+.entry-status:empty{display:none}
+.entry.active:not(.focus){box-shadow:0 0 0 1.5px color-mix(in srgb,var(--accent) 45%,transparent)}
+.done-line{display:flex;align-items:center;gap:4px}
+.done-detail{padding:2px 4px 6px 30px}
+.done-sets{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 6px}
+.ds{font-size:calc(13px * var(--ts));background:var(--bg);border-radius:8px;padding:4px 8px}
+.ds b{color:var(--muted);margin-right:4px}
+.done-acts{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.done-row{display:flex;flex-direction:column;align-items:stretch;padding:6px 10px 6px 14px;opacity:.92}
+.done-row.open{opacity:1}
 .done-main{flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:6px 0;text-align:left;white-space:nowrap;overflow:hidden}
 .done-main .ck{flex:none;width:22px;height:22px;border-radius:11px;background:var(--done);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:800}
 .done-main b{flex:0 1 auto;max-width:32%;overflow:hidden;text-overflow:ellipsis;font-size:calc(15px * var(--ts))}
