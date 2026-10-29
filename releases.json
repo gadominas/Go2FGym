@@ -4,6 +4,24 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.7.2",
+      "date": "2026-10-29",
+      "title": "No more black screen",
+      "highlights": [
+        {
+          "icon": "🖤",
+          "title": "Opens reliably",
+          "text": "If iOS fails to start the screen on opening, the app now notices and reloads it by itself."
+        }
+      ],
+      "changes": [
+        "Startup problems are noted in startup-log.txt next to the app's data, to help track down rare issues"
+      ],
+      "fixes": [
+        "Opening the app sometimes showed a black screen until it was closed and opened again"
+      ]
+    },
+    {
       "version": "1.7.1",
       "date": "2026-10-28",
       "title": "A tidier header",

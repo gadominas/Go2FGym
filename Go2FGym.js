@@ -28,7 +28,7 @@ const COACH = { autoAnalyze: true, autoStrava: true };
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.7.1';
+const VERSION = '1.7.2';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -867,10 +867,41 @@ async function runApp() {
     }
   }
 
+  // Page watchdog. On a cold start iOS sometimes fails to start (or kills) the web page, leaving a black
+  // screen until the app is reopened. A running page always answers with a JSON string, so no answer for
+  // about 1.6 s means it isn't running: load it again (at most 3 times per run) and note it in the log.
+  let silent = 0;
+  let reloads = 0;
+  let answered = false;
   async function pump() {
     let msgs = [];
+    let raw = null;
     try {
-      msgs = JSON.parse((await wv.evaluateJavaScript("window.HG ? HG.drain() : '[]'", false)) || "[]");
+      raw = await wv.evaluateJavaScript("window.HG ? HG.drain() : null", false);
+    } catch (e) {
+      raw = null;
+    }
+    if (typeof raw !== "string") {
+      if (open && ++silent >= 8 && reloads < 3) {
+        silent = 0;
+        reloads++;
+        startupLog(`page not responding${answered ? " (was running)" : " after opening"}, reload ${reloads}`);
+        try {
+          await wv.loadHTML(buildHTML(makeBoot()));
+          if (pendingUpdate) await js(`window.__showUpdate(${J(pendingUpdate)})`);
+        } catch (e) {
+          startupLog(`reload failed: ${e}`);
+        }
+      }
+      return;
+    }
+    if (!answered) {
+      answered = true;
+      if (reloads) startupLog(`page running after ${reloads} reload${reloads > 1 ? "s" : ""}`);
+    }
+    silent = 0;
+    try {
+      msgs = JSON.parse(raw || "[]");
     } catch (e) {
       return;
     }
@@ -900,6 +931,19 @@ async function runApp() {
     await sleep(200);
   }
   await pump(); // catch anything queued right before closing
+}
+
+// A short log of startup problems (newest last), kept next to the app's data. It never holds personal data.
+function startupLog(msg) {
+  try {
+    const path = fm.joinPath(ROOT, "startup-log.txt");
+    const old = fm.fileExists(path) ? fm.readString(path).split("\n").filter(Boolean) : [];
+    old.push(`${new Date().toISOString()} v${VERSION} ${msg}`);
+    fm.writeString(path, old.slice(-30).join("\n") + "\n");
+    console.log(`Startup: ${msg}`);
+  } catch (e) {
+    /* logging must never break the app */
+  }
 }
 
 function buildHTML(boot) {

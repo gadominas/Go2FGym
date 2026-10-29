@@ -2,6 +2,18 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.7.2 (2026-10-29): No more black screen
+
+- 🖤 **Opens reliably**: If iOS fails to start the screen on opening, the app now notices and reloads it by itself.
+
+**Changes**
+
+- Startup problems are noted in startup-log.txt next to the app's data, to help track down rare issues
+
+**Fixes**
+
+- Opening the app sometimes showed a black screen until it was closed and opened again
+
 ## 1.7.1 (2026-10-28): A tidier header
 
 - 🧹 **Tidier header**: The Settings button now sits neatly in the top bar at every text size.
