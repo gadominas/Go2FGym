@@ -2,6 +2,21 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.9.0 (2026-10-29): Train in your own order
+
+- ⠿ **Drag to reorder**: Hold the ⠿ handle on any exercise and drag it where you want it.
+- ↑ **Up next**: One tap moves an exercise right after the ones you've started, ideal for supersets.
+- ✅ **Complete and move on**: Complete folds an exercise into one line with kg, reps and time, and jumps to the next.
+
+**Changes**
+
+- Drag and drop exercises in a workout by the ⠿ handle, with touch or mouse; the list scrolls while you drag
+- ↑ Up next moves an exercise right after the exercises in progress, or to the top of the open ones
+- ✓ Complete marks the remaining logged sets done, folds the exercise into one line (muscle group, kg lifted, reps, minutes spent) and moves it to the completed stack at the top
+- The next exercise is highlighted (In progress or Up now) and scrolled into view
+- Tap a completed line to reopen it
+- Each ticked set records its time, so time spent per exercise is shown
+
 ## 1.8.0 (2026-10-29): Easier to get around
 
 - ＋ **Add exercises anytime**: ＋ Add exercises in the workout header opens the list for that workout's muscles.
