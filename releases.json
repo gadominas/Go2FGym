@@ -4,6 +4,34 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.15.0",
+      "date": "2026-10-31",
+      "title": "Anonymous usage, if you agree",
+      "highlights": [
+        {
+          "icon": "📊",
+          "title": "Help shape Go2FGym",
+          "text": "If you agree, Go2FGym sends anonymous counts of the features you use. Nothing else."
+        },
+        {
+          "icon": "🔒",
+          "title": "Anonymous by design",
+          "text": "A random ID made on your phone, never your content, names or accounts."
+        },
+        {
+          "icon": "🎛️",
+          "title": "Your choice, any time",
+          "text": "Settings › Privacy turns it on or off, and Send test shows what happened."
+        }
+      ],
+      "changes": [
+        "Anonymous usage analytics (app-blueprints · usage-analytics 1.1.0): opt-in, anonymous counts to PostHog's US cloud, with a one-time question and Settings › Privacy (switch and Send test)",
+        "Events: app_open (layout, theme, ai_key, unit), workout_finished (sets), plan_made, review_made (provider), strava_post_copied (part), library_updated, history_exported, app_updated",
+        "Never sent: exercise names, weights, reps, notes, workout titles or your Strava account"
+      ],
+      "fixes": []
+    },
+    {
       "version": "1.14.0",
       "date": "2026-10-31",
       "title": "Clearer Settings",
