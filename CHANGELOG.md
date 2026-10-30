@@ -2,6 +2,17 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.14.0 (2026-10-31): Clearer Settings
+
+- 🗂️ **Sections you can see**: Each Settings section now sits in its own card, so you can tell where it starts and ends.
+- 🔤 **Quieter headings**: Section names are small grey capitals, so they no longer look like settings.
+- 🎨 **In every palette**: The cards follow your colours, text size and layout, light or dark.
+
+**Changes**
+
+- Settings (app-blueprints · settings 1.1.0): each section's rows sit in one card, with a thin border and a slightly lighter background, under a small muted uppercase heading
+- The changed-count line and a section's explanation sit outside the cards; Built with is a card too
+
 ## 1.13.0 (2026-10-30): Opens every time
 
 - 🚀 **Opens every time**: The app comes up at once, even from the widget, after quick taps or with slow iCloud.

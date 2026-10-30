@@ -4,6 +4,33 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.14.0",
+      "date": "2026-10-31",
+      "title": "Clearer Settings",
+      "highlights": [
+        {
+          "icon": "🗂️",
+          "title": "Sections you can see",
+          "text": "Each Settings section now sits in its own card, so you can tell where it starts and ends."
+        },
+        {
+          "icon": "🔤",
+          "title": "Quieter headings",
+          "text": "Section names are small grey capitals, so they no longer look like settings."
+        },
+        {
+          "icon": "🎨",
+          "title": "In every palette",
+          "text": "The cards follow your colours, text size and layout, light or dark."
+        }
+      ],
+      "changes": [
+        "Settings (app-blueprints · settings 1.1.0): each section's rows sit in one card, with a thin border and a slightly lighter background, under a small muted uppercase heading",
+        "The changed-count line and a section's explanation sit outside the cards; Built with is a card too"
+      ],
+      "fixes": []
+    },
+    {
       "version": "1.13.0",
       "date": "2026-10-30",
       "title": "Opens every time",
