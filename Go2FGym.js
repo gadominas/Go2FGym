@@ -13,7 +13,10 @@
  * - Run it as a widget (Home Screen or Lock Screen) to see your last workout and this week's
  *   (app-blueprints · widgets: the shared frame with the Go2FGym logo tile).
  * - Opens on a 2.4 s launch screen with the Go2FGym dumbbell (app-blueprints · launch-screen).
+ * - Without an AI key, a short card now and then shows what the AI coach adds (app-blueprints · ai-invitation).
  *   The BLUEPRINTS block below lists every shared blueprint this app follows (Settings › Built with).
+ * - Starts safely (app-blueprints · recipe safe-startup): window first, data after, nothing saved over a file
+ *   that wasn't read, one window at a time, and a start-up log in Settings › Updates.
  *
  * Exercise data and photos: free-exercise-db by yuhonas (public domain,
  * Unlicense) — https://github.com/yuhonas/free-exercise-db
@@ -29,9 +32,20 @@ const LIBRARY = {
 // The two "after each workout" jobs; AI settings › What AI does turns both on or off.
 const COACH = { autoAnalyze: true, autoStrava: true };
 
+// ───────── AI invitation (app-blueprints · ai-invitation) ─────────
+// What the invitation promises. Exactly three perks, each a real feature that needs a key.
+const AI_INVITE = {
+  title: "Give Go2FGym superpowers",            // punchy, names the app, at most 32 characters
+  perks: [                                      // icon + at most 48 characters each
+    { icon: "✦", text: "Workouts planned around your time and history" },
+    { icon: "📋", text: "A coach's review after every workout" },
+    { icon: "✍️", text: "Strava posts written in the tone you pick" },
+  ],
+};
+
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.12.0';
+const VERSION = '1.13.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -48,6 +62,7 @@ const BLUEPRINTS = [
   { id: 'ai-configuration', name: 'AI configuration', version: '1.0.0', since: '1.6.0' },
   { id: 'launch-screen', name: 'Launch screen', version: '1.0.0', since: '1.11.0' },
   { id: 'widgets', name: 'Widgets', version: '1.0.0', since: '1.12.0' },
+  { id: 'ai-invitation', name: 'AI invitation', version: '1.2.0', since: '1.13.0' },
 ];
 
 // ---------------------------------------------------------------- storage
@@ -71,15 +86,33 @@ for (const d of [ROOT, IMG]) if (!fm.fileExists(d)) fm.createDirectory(d, true);
 const sfm = (() => { try { return FileManager.iCloud(); } catch (e) { return FileManager.local(); } })();
 const SET_DIR = sfm.joinPath(sfm.documentsDirectory(), "Go2FGym");
 const SP = (n) => sfm.joinPath(SET_DIR, n + ".json");
-async function load(n, def) {
+// A short start-up log on the phone (local, not iCloud): Settings › Updates › Start-up log, and on screen if opening stalls.
+const LOG_PATH = FileManager.local().joinPath(FileManager.local().documentsDirectory(), APP_ID + "-startup.log");
+function startLog(msg) {
+  try {
+    const lfm = FileManager.local(), line = new Date().toISOString().slice(11, 19) + "  " + msg;
+    const old = lfm.fileExists(LOG_PATH) ? lfm.readString(LOG_PATH).split("\n").slice(-60) : [];
+    lfm.writeString(LOG_PATH, old.concat(line).join("\n"));
+  } catch (e) {}
+}
+const loadIssues = [];   // files iCloud didn't hand over in time, or that couldn't be read
+async function load(n, def, waitMs = 10000) {
   const p = SP(n);
   if (!sfm.fileExists(p)) return def;
   try {
-    if (sfm.isFileStoredIniCloud(p) && !sfm.isFileDownloaded(p)) await sfm.downloadFileFromiCloud(p);
+    if (sfm.isFileStoredIniCloud(p) && !sfm.isFileDownloaded(p)) {
+      // iCloud can take a long time (or forever, offline): never let start-up hang on it
+      await Promise.race([sfm.downloadFileFromiCloud(p), new Promise(r => Timer.schedule(waitMs, false, r))]);
+      if (!sfm.isFileDownloaded(p)) { loadIssues.push(n); startLog(`iCloud didn't deliver ${n}.json in ${waitMs / 1000} s`); return def; }
+    }
     return JSON.parse(sfm.readString(p));
-  } catch (e) { return def; }   // a broken file falls back to defaults, never crashes
+  } catch (e) { loadIssues.push(n); startLog(`Couldn't read ${n}.json: ${e}`); return def; }   // a broken file falls back to defaults, never crashes
 }
+// Settings that were never read are never saved over (set in loadSettings). Data files have their own guard (writeJSON, aiWrite).
+let settingsOk = false;
+let dataLoaded = false;   // set by loadData(): data files are only written once they were read
 const write = (n, v) => {
+  if (n === "settings" && !settingsOk) return false;
   try { if (!sfm.fileExists(SET_DIR)) sfm.createDirectory(SET_DIR, true); sfm.writeString(SP(n), JSON.stringify(v)); return true; }
   catch (e) { console.warn(`Couldn't save ${n}: ${e}`); return false; }
 };
@@ -96,6 +129,7 @@ const settings = {
   checkUpdates: true,   // offer new versions from GitHub (asks again 2 days after "Later")
   stravaMode: "funny",  // default tone for Strava posts
   cfg: {},
+  // aiInvite: { next, shown, later, off }   the AI invitation's schedule (internal state, no UI)
 };
 const saveSettings = () => write("settings", settings);
 const skipCategories = () => [settings.strongman ? null : "strongman", settings.olympic ? null : "olympic weightlifting"].filter(Boolean);
@@ -130,6 +164,7 @@ function toggleEquipment(name) {
 
 async function loadSettings() {
   const saved = await load("settings", null);
+  settingsOk = !loadIssues.includes("settings");   // settings that were never read are never saved over
   if (saved) Object.assign(settings, saved);
   const d = { theme: "auto", density: "comfortable", font: "sans", textSize: 1, unit: "kg", stravaMode: "funny" };
   for (const k of Object.keys(d)) if (setSetting(k, settings[k]) === null) settings[k] = d[k];
@@ -204,17 +239,21 @@ function settingsState() {
 const DISCLAIMER_VERSION = 2;
 
 const J = (v) => JSON.stringify(v).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
-const sleep = (ms) => new Promise((r) => Timer.schedule(ms, false, r));
 
+// Your own data on this iPhone: read in loadData(), and only written once it was read, so a failed read is never saved over.
+// The exercise library (exercises.json, library-meta.json, photos) is a download, not your data: it can always be fetched again.
+const USER_FILES = [P.history, P.draft, P.consent];
 function readJSON(path, fallback) {
   try {
     if (fm.fileExists(path)) return JSON.parse(fm.readString(path));
   } catch (e) {
     console.error(`Could not read ${path}: ${e}`);
+    if (USER_FILES.includes(path)) { loadIssues.push(fm.fileName(path)); startLog(`Couldn't read ${fm.fileName(path, true)}: ${e}`); }
   }
   return fallback;
 }
 function writeJSON(path, value) {
+  if (USER_FILES.includes(path) && !dataLoaded) return;   // never save over data that was never read
   fm.writeString(path, JSON.stringify(value));
 }
 function imgPath(rel) {
@@ -237,6 +276,7 @@ function loadHistory() {
   return h && Array.isArray(h.sessions) ? h : { version: 1, sessions: [] };
 }
 function saveHistory(h) {
+  if (!dataLoaded) return;   // a history that wasn't read is never saved, here or over the iCloud backup
   h.sessions.sort((a, b) => a.start.localeCompare(b.start));
   writeJSON(P.history, h);
   if (!settings.icloudBackup) return;
@@ -249,7 +289,7 @@ function saveHistory(h) {
     }
   }
 }
-async function restoreFromBackupIfNeeded() {
+async function restoreFromBackupIfNeeded(waitMs = 10000) {
   if (fm.fileExists(P.history)) return;
   const c = icloudDir();
   if (!c) return;
@@ -258,13 +298,40 @@ async function restoreFromBackupIfNeeded() {
   if (!c.ic.fileExists(p) && c.ic.fileExists(legacy)) p = legacy;
   try {
     if (c.ic.fileExists(p)) {
-      await c.ic.downloadFileFromiCloud(p);
+      if (!c.ic.isFileDownloaded(p)) {
+        // iCloud can take a long time (or forever, offline): never let start-up hang on it. Until the backup is in,
+        // history counts as unread, so a new workout can't replace the backup with a history of one.
+        await Promise.race([c.ic.downloadFileFromiCloud(p), new Promise(r => Timer.schedule(waitMs, false, r))]);
+        if (!c.ic.isFileDownloaded(p)) { loadIssues.push("history"); startLog(`iCloud didn't deliver the history backup in ${waitMs / 1000} s`); return; }
+      }
       fm.writeString(P.history, c.ic.readString(p));
-      console.log("History restored from iCloud backup");
+      startLog("history restored from the iCloud backup");
     }
   } catch (e) {
     console.log(`No backup restored: ${e}`);
   }
+}
+
+// Data is read in loadData(): the app shows its first screen before reading it (the library alone is several MB,
+// and the backup may have to come from iCloud). Code that runs before sees empty data, never undefined.
+let lib = [], libById = {};                         // the exercise library, built from exercises.json and your equipment
+let history = { version: 1, sessions: [] };         // your workouts
+let draft = null, meta = null, consent = null;      // the workout in progress, the library's download date, the disclaimer
+// The widget passes true: it reads only the workouts, and never restores (a widget run never writes).
+async function loadData(forWidget = false) {
+  loadIssues.length = 0;
+  if (!forWidget) await restoreFromBackupIfNeeded();
+  history = loadHistory();
+  if (!forWidget) {
+    draft = readJSON(P.draft, null);
+    consent = readJSON(P.consent, null);
+    meta = readJSON(P.meta, null);
+    Object.assign(aiSettings, aiLoad("ai-settings", {}));
+    usage = aiLoad("usage", usage);
+    lib = buildLibrary();
+    libById = Object.fromEntries(lib.map((e) => [e.id, e]));
+  }
+  dataLoaded = loadIssues.length === 0;   // anything missing: show what we have, save nothing over it
 }
 
 function toCSV(h) {
@@ -319,10 +386,10 @@ function widgetSnapshot(history, byId) {
 }
 
 // Go2FGym: the last workout, then the rest of this week. Reads the snapshot the app saves; before the app has saved one
-// (the first widget run after updating), it reads the workout log on this iPhone. Read only: never writes, prunes or migrates.
+// (the first widget run after updating), it uses the workout log loadData(true) read. Read only: never writes, prunes or migrates.
 async function widgetModel() {
   const snap = readWidget();
-  let list = snap && Array.isArray(snap.workouts) ? snap.workouts : loadHistory().sessions.map((s) => widgetWorkout(s, null));
+  let list = snap && Array.isArray(snap.workouts) ? snap.workouts : history.sessions.map((s) => widgetWorkout(s, null));
   list = list.filter((x) => x && isFinite(x.start)).sort((a, b) => b.start - a.start);
   const last = list[0];
   if (!last) return { empty: "No workouts yet. Tap to start one." };
@@ -513,20 +580,22 @@ const PROVIDERS = { anthropic: "Claude", openai: "OpenAI" };
 // AI settings and token usage live in their own small JSON files on this iPhone (never the keys).
 const aiFm = FileManager.local();
 const aiPath = name => aiFm.joinPath(aiFm.documentsDirectory(), "go2fgym-" + name + ".json");
+// Both are read in loadData() and, like your workouts, only written once they were read.
 function aiLoad(name, fallback) {
   try { const p = aiPath(name); if (aiFm.fileExists(p)) return JSON.parse(aiFm.readString(p)); }
-  catch (e) { console.log("AI: couldn't read " + name + ": " + e); }
+  catch (e) { console.log("AI: couldn't read " + name + ": " + e); loadIssues.push(name); startLog(`Couldn't read go2fgym-${name}.json: ${e}`); }
   return fallback;
 }
 function aiWrite(name, data) {
+  if (!dataLoaded) return;   // never save over AI settings or usage that were never read
   try { aiFm.writeString(aiPath(name), JSON.stringify(data)); } catch (e) { console.log("AI: couldn't save " + name + ": " + e); }
 }
-const aiSettings = Object.assign({
+const aiSettings = {
   aiProvider: "anthropic",   // the provider marked "In use"
   ai: true,                  // background AI jobs on/off ("What AI does")
   // model:  { anthropic: "…", openai: "…" }   set when the user picks a model
   // models: { anthropic: { at, list: [{ id, name }] }, openai: … }   cached model lists
-}, aiLoad("ai-settings", {}));
+};   // the saved file is merged in by loadData()
 const saveAiSettings = () => aiWrite("ai-settings", aiSettings);
 
 const keyFor   = p => Keychain.contains(AI[p].key) ? Keychain.get(AI[p].key) : null;
@@ -603,7 +672,7 @@ function parseJSON(txt) {
 }
 
 // Token usage, counted from what the provider reports, per provider, model, feature and local day.
-let usage = aiLoad("usage", { since: Date.now(), p: {} });
+var usage = { since: Date.now(), p: {} };   // read in loadData()
 const aiDayKey = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -658,6 +727,7 @@ async function aiAction(head, m) {
       break;
     case "airm": removeKey(P); msg = `${PROVIDERS[P]} key removed`;
       if (!aiKey()) { const other = Object.keys(PROVIDERS).find(p => keyFor(p)); if (other) aiSettings.aiProvider = other; }
+      aiInviteKeyRemoved();   // AI invitation: no key left, so invite again from the next launch
       break;
     case "aiprov": if (PROVIDERS[m.v] && keyFor(m.v)) aiSettings.aiProvider = m.v; break;
     case "aimodels":
@@ -701,6 +771,38 @@ function aiStatusLine() {
 }
 const aiFmtN = n => n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n);
 // ─────────────── end of AI configuration ───────────────
+
+// ─────────────── AI invitation (app-blueprints · ai-invitation) ───────────────
+// When it may appear. Its state lives in settings.json as settings.aiInvite (no UI of its own).
+const INVITE_DAY = 864e5;
+const INVITE_GAP = 3;          // days between invitations (about twice a week)
+const INVITE_GAP_SLOW = 7;     // days between invitations after the 4th "Later"
+function aiInviteDue(now = Date.now()) {
+  const s = settings.aiInvite || (settings.aiInvite = {});
+  if (aiKey()) return false;   // a key means AI is on: nothing to invite to
+  if (s.off) return false;     // "Don't remind me again"
+  return now >= (s.next || 0); // from the very first launch (right after install), then at most every 3 days
+}
+// Removing the last key turns AI off: invite again from the next launch (called in the "airm" action).
+function aiInviteKeyRemoved() {
+  if (aiKey()) return;
+  const s = settings.aiInvite || (settings.aiInvite = {});
+  s.next = 0; saveSettings();
+}
+// The page reports what happened: "shown", "open", "later" or "never".
+function aiInviteNote(what, now = Date.now()) {
+  const s = settings.aiInvite || (settings.aiInvite = {});
+  if (what === "shown") { s.shown = (s.shown || 0) + 1; s.next = now + INVITE_GAP * INVITE_DAY; }
+  else if (what === "later") { s.later = (s.later || 0) + 1; s.next = now + (s.later >= 4 ? INVITE_GAP_SLOW : INVITE_GAP) * INVITE_DAY; }
+  else if (what === "never") s.off = true;
+  else return;   // "open": the AI sheet takes over; "shown" already set the next date
+  saveSettings();
+}
+// One offer per launch, and an update wins: called once the update check has settled (bootApp).
+function inviteIfDue() {
+  if (!pendingUpdate && aiInviteDue()) js(`window.__aiInvite && window.__aiInvite(${JSON.stringify(AI_INVITE)})`);
+}
+// ─────────────── end of AI invitation ───────────────
 
 // ---------------------------------------------------------------- AI coach
 // The web UI builds the prompt and JSON schema; the request goes through aiCall, so keys never leave Scriptable.
@@ -951,267 +1053,254 @@ async function runWidget() {
 // ───────── end of Widget ─────────
 
 // ---------------------------------------------------------------- app
-async function runApp() {
-  await restoreFromBackupIfNeeded();
-  let lib = buildLibrary();
-  let libById = Object.fromEntries(lib.map((e) => [e.id, e]));
-  let history = loadHistory();
-  // The widget's snapshot (app-blueprints · widgets): on every open, and whenever the workouts or the library change.
-  const widgetSave = () => saveWidget(widgetSnapshot(history, libById));
-  widgetSave();
-
-  const makeBoot = () => ({
+// What the page starts from. bootApp() hands it over once loadData() has read the data; buildHTML() never inlines it.
+function clientState() {
+  return {
     lib: forWeb(lib),
     history,
-    draft: readJSON(P.draft, null),
+    draft,
     ai: { hasKey: !!aiKey(), bg: aiSettings.ai, autoAnalyze: COACH.autoAnalyze, autoStrava: COACH.autoStrava, stravaMode: settings.stravaMode },
-    meta: readJSON(P.meta, null),
-    consent: readJSON(P.consent, null),
+    meta,
+    consent,
     version: VERSION,
     look: lookState(),
     cfg: { unit: settings.unit, rest: cfg("restSeconds"), equipment: settings.equipment, disclaimerVersion: DISCLAIMER_VERSION },
-  });
-  const boot = makeBoot();
-  let settingsEffect = "";   // what closing Settings must do: "", "library" or "reload"
-
-  const wv = new WebView();
-  const js = async (code) => {
-    try {
-      await wv.evaluateJavaScript(`${code};0`, false);
-    } catch (e) {
-      console.log(`Bridge: ${e}`);
-    }
   };
+}
+// The widget's snapshot (app-blueprints · widgets): on every open, and whenever the workouts or the library change.
+// Only from data that was read: a slow start never empties the widget.
+const widgetSave = () => { if (dataLoaded) saveWidget(widgetSnapshot(history, libById)); };
+let settingsEffect = "";   // what closing Settings must do: "", "library" or "reload"
+let pendingUpdate = null;  // the update offered this run, if any
+let wv = null;             // the app's window, built in main()
+const js = async (code) => {
+  try {
+    await ev(`${code};0`);
+  } catch (e) {
+    console.log(`Bridge: ${e}`);
+  }
+};
 
-  async function handle(m) {
-    const p = m.payload || {};
-    if (AI_ACTIONS.includes(m.type)) {   // AI settings sheet (app-blueprints · ai-configuration)
-      const msg = await aiAction(m.type, p);
-      await js(`window.__aiState(${J(aiClientState())})`);
-      if (msg) await js(`window.__aiToast(${J(msg)})`);
-      return;
+// Hands the state to the page: the exercise library in pieces (one huge message can stall WebKit), then window.__boot.
+async function handOver() {
+  const st = clientState(), list = st.lib;
+  st.lib = [];
+  for (let i = 0; i < list.length; i += 100) await ev(`window.__parts.push(${J(list.slice(i, i + 100))})`);
+  await ev(`window.__boot(${J(st)})`);
+}
+
+async function handle(m) {
+  const p = m.payload || {};
+  if (AI_ACTIONS.includes(m.type)) {   // AI settings sheet (app-blueprints · ai-configuration)
+    const msg = await aiAction(m.type, p);
+    await js(`window.__aiState(${J(aiClientState())})`);
+    if (msg) await js(`window.__aiToast(${J(msg)})`);
+    return;
+  }
+  switch (m.type) {
+    // Settings (app-blueprints · settings): each change is applied and saved at once; the page gets the fresh state.
+    case "settings-get":
+    case "set":
+    case "equip":
+    case "cfg": {
+      let effect = "";
+      if (m.type === "set") effect = setSetting(p.k, p.v);
+      else if (m.type === "equip") effect = toggleEquipment(p.v);
+      else if (m.type === "cfg") { if (p.k === "*") settings.cfg = {}; else setCfg(p.k, p.reset ? null : p.v); }
+      if (effect === null) await js(`HG.toast(${J(m.type === "equip" ? "Keep at least one kind of equipment." : "That setting can’t be changed here.")})`);
+      else if (effect) settingsEffect = settingsEffect === "reload" || effect === "reload" ? "reload" : effect;
+      if (m.type !== "settings-get") saveSettings();
+      await js(`HG.onSettings(${J(settingsState())})`);
+      break;
     }
-    switch (m.type) {
-      // Settings (app-blueprints · settings): each change is applied and saved at once; the page gets the fresh state.
-      case "settings-get":
-      case "set":
-      case "equip":
-      case "cfg": {
-        let effect = "";
-        if (m.type === "set") effect = setSetting(p.k, p.v);
-        else if (m.type === "equip") effect = toggleEquipment(p.v);
-        else if (m.type === "cfg") { if (p.k === "*") settings.cfg = {}; else setCfg(p.k, p.reset ? null : p.v); }
-        if (effect === null) await js(`HG.toast(${J(m.type === "equip" ? "Keep at least one kind of equipment." : "That setting can’t be changed here.")})`);
-        else if (effect) settingsEffect = settingsEffect === "reload" || effect === "reload" ? "reload" : effect;
-        if (m.type !== "settings-get") saveSettings();
-        await js(`HG.onSettings(${J(settingsState())})`);
-        break;
-      }
-      case "settings-done": {   // the sheet closed: rebuild the library or reload the page once, if needed
-        const effect = settingsEffect;
-        settingsEffect = "";
-        if (effect === "library" || effect === "reload") {
-          lib = buildLibrary();
-          libById = Object.fromEntries(lib.map((e) => [e.id, e]));
-          widgetSave();
-        }
-        if (effect === "reload") await wv.loadHTML(buildHTML(makeBoot()));
-        else if (effect === "library") await js(`HG.onLibrary(${J(forWeb(lib))},${J(readJSON(P.meta, null))})`);
-        break;
-      }
-      case "update-check": {   // Settings › Check for updates now: clears "Later" and checks at once
-        clearUpdateSnooze();
-        const was = settings.checkUpdates; settings.checkUpdates = true;
-        const u = await checkForUpdate(); settings.checkUpdates = was;
-        await js(`HG.onUpdateCheck(${J(u ? `Version ${u.latest} is available` : `You're on the latest version (${VERSION})`)},${!!u})`);
-        if (u) { pendingUpdate = u; await js(`window.__showUpdate(${J(u)})`); }
-        break;
-      }
-      case "openurl":   // Built with: only the blueprints repository opens from here
-        if (p.v === BLUEPRINTS_REPO || String(p.v).startsWith(BLUEPRINTS_REPO + "/")) await Safari.openInApp(p.v, false);
-        break;
-      case "images":
-        for (const id of p.ids || []) {
-          const ex = libById[id];
-          const urls = [];
-          if (ex)
-            for (const rel of ex.img) {
-              const path = imgPath(rel);
-              if (fm.fileExists(path)) urls.push(`data:image/jpeg;base64,${Data.fromFile(path).toBase64String()}`);
-            }
-          await js(`HG.onImages(${J(id)},${J(urls)})`);
-        }
-        break;
-      case "ai": {
-        let out;
-        try {
-          out = await aiCoach(p);
-        } catch (e) {
-          out = { error: String((e && e.message) || e) };
-        }
-        await js(`HG.onAI(${J(p.rid)},${J(out)})`);
-        break;
-      }
-      case "update-later":
-        snoozeUpdate();
-        pendingUpdate = null;
-        break;
-      case "update-now": {
-        let ok = false;
-        let msg = "";
-        try {
-          msg = await applyUpdate(pendingUpdate);
-          ok = true;
-          pendingUpdate = null;
-          clearUpdateSnooze();
-        } catch (e) {
-          msg = String((e && e.message) || e);
-        }
-        await js(`HG.onUpdateDone(${ok},${J(msg)})`);
-        break;
-      }
-      case "copy":
-        Pasteboard.copyString(String(p.text || ""));
-        await js(`HG.toast(${J(p.label ? `${p.label} copied` : "Copied")})`);
-        break;
-      case "accept":
-        writeJSON(P.consent, { version: p.version, acceptedAt: new Date().toISOString() });
-        break;
-      case "open":
-        if (typeof p.url === "string" && p.url.startsWith("https://")) Safari.open(p.url);
-        break;
-      case "draft":
-        if (p.session) writeJSON(P.draft, p.session);
-        else if (fm.fileExists(P.draft)) fm.remove(P.draft);
-        break;
-      case "save": {
-        const s = p.session;
-        if (!s || !s.id || !Array.isArray(s.entries)) throw new Error("Workout could not be saved: missing data.");
-        history.sessions = history.sessions.filter((x) => x.id !== s.id).concat(s);
-        saveHistory(history);
-        widgetSave();
-        if (fm.fileExists(P.draft)) fm.remove(P.draft);
-        await js(`HG.onHistory(${J(history)})`);
-        break;
-      }
-      case "delete":
-        history.sessions = history.sessions.filter((x) => x.id !== p.id);
-        saveHistory(history);
-        widgetSave();
-        await js(`HG.onHistory(${J(history)})`);
-        break;
-      case "export": {
-        const csv = toCSV(history);
-        let where = "Scriptable's local Go2FGym folder";
-        const c = icloudDir();
-        try {
-          if (c) {
-            c.ic.writeString(c.ic.joinPath(c.dir, "history.csv"), csv);
-            where = "iCloud Drive › Scriptable › Go2FGym-backup";
-          } else fm.writeString(fm.joinPath(ROOT, "history.csv"), csv);
-        } catch (e) {
-          fm.writeString(fm.joinPath(ROOT, "history.csv"), csv);
-        }
-        await js(`HG.toast(${J(`history.csv saved to ${where}`)})`);
-        try {
-          await ShareSheet.present([csv]);
-        } catch (e) {
-          /* share sheet dismissed */
-        }
-        break;
-      }
-      case "sync": {
-        const meta = await syncLibrary((s) => js(`HG.onSync(${J(s)})`));
+    case "settings-done": {   // the sheet closed: rebuild the library or reload the page once, if needed
+      const effect = settingsEffect;
+      settingsEffect = "";
+      if (effect === "library" || effect === "reload") {
         lib = buildLibrary();
         libById = Object.fromEntries(lib.map((e) => [e.id, e]));
         widgetSave();
-        await js(`HG.onLibrary(${J(forWeb(lib))},${J(meta)})`);
-        break;
       }
+      if (effect === "reload") { await wv.loadHTML(buildHTML()); await handOver(); }
+      else if (effect === "library") await js(`HG.onLibrary(${J(forWeb(lib))},${J(meta)})`);
+      break;
     }
-  }
-
-  // Page watchdog. On a cold start iOS sometimes fails to start (or kills) the web page, leaving a black
-  // screen until the app is reopened. A running page always answers with a JSON string, so no answer for
-  // about 1.6 s means it isn't running: load it again (at most 3 times per run) and note it in the log.
-  let silent = 0;
-  let reloads = 0;
-  let answered = false;
-  async function pump() {
-    let msgs = [];
-    let raw = null;
-    try {
-      raw = await wv.evaluateJavaScript("window.HG ? HG.drain() : null", false);
-    } catch (e) {
-      raw = null;
+    case "update-check": {   // Settings › Check for updates now: clears "Later" and checks at once
+      clearUpdateSnooze();
+      const was = settings.checkUpdates; settings.checkUpdates = true;
+      const u = await checkForUpdate(); settings.checkUpdates = was;
+      await js(`HG.onUpdateCheck(${J(u ? `Version ${u.latest} is available` : `You're on the latest version (${VERSION})`)},${!!u})`);
+      if (u) { pendingUpdate = u; await js(`window.__showUpdate(${J(u)})`); }
+      break;
     }
-    if (typeof raw !== "string") {
-      if (open && ++silent >= 8 && reloads < 3) {
-        silent = 0;
-        reloads++;
-        startupLog(`page not responding${answered ? " (was running)" : " after opening"}, reload ${reloads}`);
-        try {
-          await wv.loadHTML(buildHTML(makeBoot()));
-          if (pendingUpdate) await js(`window.__showUpdate(${J(pendingUpdate)})`);
-        } catch (e) {
-          startupLog(`reload failed: ${e}`);
-        }
+    case "startlog": {   // Settings › Updates › Start-up log (safe-startup recipe)
+      let txt = "";
+      try { txt = FileManager.local().readString(LOG_PATH).split("\n").slice(-40).join("\n"); } catch (e) {}
+      await js(`HG.onStartLog(${J(txt)})`);
+      break;
+    }
+    case "aiinvite": aiInviteNote(p.v); break;   // AI invitation: shown, open, later or never
+    case "openurl":   // Built with: only the blueprints repository opens from here
+      if (p.v === BLUEPRINTS_REPO || String(p.v).startsWith(BLUEPRINTS_REPO + "/")) await Safari.openInApp(p.v, false);
+      break;
+    case "images":
+      for (const id of p.ids || []) {
+        const ex = libById[id];
+        const urls = [];
+        if (ex)
+          for (const rel of ex.img) {
+            const path = imgPath(rel);
+            if (fm.fileExists(path)) urls.push(`data:image/jpeg;base64,${Data.fromFile(path).toBase64String()}`);
+          }
+        await js(`HG.onImages(${J(id)},${J(urls)})`);
       }
-      return;
-    }
-    if (!answered) {
-      answered = true;
-      if (reloads) startupLog(`page running after ${reloads} reload${reloads > 1 ? "s" : ""}`);
-    }
-    silent = 0;
-    try {
-      msgs = JSON.parse(raw || "[]");
-    } catch (e) {
-      return;
-    }
-    for (const m of msgs) {
+      break;
+    case "ai": {
+      let out;
       try {
-        await handle(m);
+        out = await aiCoach(p);
       } catch (e) {
-        await js(`HG.onError(${J(String((e && e.message) || e))})`);
+        out = { error: String((e && e.message) || e) };
       }
+      await js(`HG.onAI(${J(p.rid)},${J(out)})`);
+      break;
+    }
+    case "update-later":
+      snoozeUpdate();
+      pendingUpdate = null;
+      break;
+    case "update-now": {
+      let ok = false;
+      let msg = "";
+      try {
+        msg = await applyUpdate(pendingUpdate);
+        ok = true;
+        pendingUpdate = null;
+        clearUpdateSnooze();
+      } catch (e) {
+        msg = String((e && e.message) || e);
+      }
+      await js(`HG.onUpdateDone(${ok},${J(msg)})`);
+      break;
+    }
+    case "copy":
+      Pasteboard.copyString(String(p.text || ""));
+      await js(`HG.toast(${J(p.label ? `${p.label} copied` : "Copied")})`);
+      break;
+    case "accept":
+      consent = { version: p.version, acceptedAt: new Date().toISOString() };
+      writeJSON(P.consent, consent);
+      break;
+    case "open":
+      if (typeof p.url === "string" && p.url.startsWith("https://")) Safari.open(p.url);
+      break;
+    case "draft":
+      draft = p.session || null;
+      if (draft) writeJSON(P.draft, draft);
+      else if (dataLoaded && fm.fileExists(P.draft)) fm.remove(P.draft);
+      break;
+    case "save": {
+      const s = p.session;
+      if (!s || !s.id || !Array.isArray(s.entries)) throw new Error("Workout could not be saved: missing data.");
+      history.sessions = history.sessions.filter((x) => x.id !== s.id).concat(s);
+      saveHistory(history);
+      widgetSave();
+      draft = null;
+      if (dataLoaded && fm.fileExists(P.draft)) fm.remove(P.draft);
+      await js(`HG.onHistory(${J(history)})`);
+      break;
+    }
+    case "delete":
+      history.sessions = history.sessions.filter((x) => x.id !== p.id);
+      saveHistory(history);
+      widgetSave();
+      await js(`HG.onHistory(${J(history)})`);
+      break;
+    case "export": {
+      const csv = toCSV(history);
+      let where = "Scriptable's local Go2FGym folder";
+      const c = icloudDir();
+      try {
+        if (c) {
+          c.ic.writeString(c.ic.joinPath(c.dir, "history.csv"), csv);
+          where = "iCloud Drive › Scriptable › Go2FGym-backup";
+        } else fm.writeString(fm.joinPath(ROOT, "history.csv"), csv);
+      } catch (e) {
+        fm.writeString(fm.joinPath(ROOT, "history.csv"), csv);
+      }
+      await js(`HG.toast(${J(`history.csv saved to ${where}`)})`);
+      try {
+        await ShareSheet.present([csv]);
+      } catch (e) {
+        /* share sheet dismissed */
+      }
+      break;
+    }
+    case "sync": {
+      meta = await syncLibrary((s) => js(`HG.onSync(${J(s)})`));
+      lib = buildLibrary();
+      libById = Object.fromEntries(lib.map((e) => [e.id, e]));
+      widgetSave();
+      await js(`HG.onLibrary(${J(forWeb(lib))},${J(meta)})`);
+      break;
     }
   }
-
-  let pendingUpdate = null;
-  await wv.loadHTML(buildHTML(boot));
-  let open = true;
-  wv.present(true).then(
-    () => (open = false),
-    () => (open = false)
-  );
-  // Once per run, after the first screen has rendered, so it never slows the start.
-  checkForUpdate().then((u) => {
-    pendingUpdate = u;
-    if (u && open) js(`window.__showUpdate(${J(u)})`);
-  });
-  while (open) {
-    await pump();
-    await sleep(200);
-  }
-  await pump(); // catch anything queued right before closing
 }
 
-// A short log of startup problems (newest last), kept next to the app's data. It never holds personal data.
-function startupLog(msg) {
+// The page talks through a message queue: Scriptable collects it every 200 ms while the window is open.
+// A page that was running and stops answering (iOS can stop the web page while the app is open) is built again and
+// handed its state, at most 3 times per run. Opening itself is covered by the safe start-up recipe (bootApp, __bootNote).
+let silent = 0;
+let reloads = 0;
+let answered = false;
+let recovering = false;
+async function pump(isOpen) {
+  let msgs = [];
+  let raw = null;
   try {
-    const path = fm.joinPath(ROOT, "startup-log.txt");
-    const old = fm.fileExists(path) ? fm.readString(path).split("\n").filter(Boolean) : [];
-    old.push(`${new Date().toISOString()} v${VERSION} ${msg}`);
-    fm.writeString(path, old.slice(-30).join("\n") + "\n");
-    console.log(`Startup: ${msg}`);
+    raw = await ev("window.HG ? HG.drain() : null", 5000);
   } catch (e) {
-    /* logging must never break the app */
+    raw = null;
+  }
+  if (typeof raw !== "string") {   // no page yet (still booting), or a page that stopped answering
+    if (answered && isOpen() && ++silent >= 8 && reloads < 3) {
+      silent = 0;
+      reloads++;
+      recovering = true;
+      startLog(`page stopped responding, reload ${reloads}`);
+      try {
+        await wv.loadHTML(buildHTML());
+        await handOver();
+        if (pendingUpdate) await js(`window.__showUpdate(${J(pendingUpdate)})`);
+      } catch (e) {
+        startLog(`reload failed: ${e.message || e}`);
+      }
+    }
+    return;
+  }
+  answered = true;
+  if (recovering) {
+    recovering = false;
+    startLog(`page running again after ${reloads} reload${reloads > 1 ? "s" : ""}`);
+  }
+  silent = 0;
+  try {
+    msgs = JSON.parse(raw || "[]");
+  } catch (e) {
+    return;
+  }
+  for (const m of msgs) {
+    try {
+      await handle(m);
+    } catch (e) {
+      await js(`HG.onError(${J(String((e && e.message) || e))})`);
+    }
   }
 }
 
-function buildHTML(boot) {
-  const data = J(boot).replace(/<\//g, "<\\/");
+// The page shell: launch screen, a "Loading your workouts…" placeholder and the app's code. It reads only settings
+// (the look); the data comes later through window.__parts and window.__boot (bootApp, handOver).
+function buildHTML() {
   const look = lookState();
   return `<!doctype html><html lang="en" data-theme="${look.shown}" data-font="${look.font}" style="--ts:${look.textSize}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
@@ -1228,7 +1317,7 @@ function buildHTML(boot) {
   <div class="spWord">Go2<span>F</span>Gym</div>
   <div class="spTag">Pick. Lift. Log.</div>
 </div>
-<main id="app"></main>
+<main id="app"><div class="booting" role="status"><span class="busy-dot"></span>Loading your workouts…</div></main>
 <div id="rest" hidden><div class="rest-fill"></div><span class="rest-label">Rest</span><span class="rest-time">0:00</span>
 <button data-a="rest-add">+30 s</button><button data-a="rest-skip">Skip</button></div>
 <div id="sat"></div><button id="last" data-a="last" hidden></button>
@@ -1241,13 +1330,38 @@ function buildHTML(boot) {
   sp.addEventListener("click", gone);   // tap to skip
   setTimeout(gone, 2900);               // out of the page once the CSS fade is done
 })();
-window.__BOOT=${data};(${webApp.toString()})();</script></body></html>`;
+// The page goes on screen first; Scriptable hands over the data once it has read it (safe-startup recipe).
+window.__parts = [];
+window.__bootNote = function (title, detail) {
+  var b = document.querySelector(".booting"); if (!b) return;
+  b.className = "booting note";
+  b.innerHTML = "<b></b><span></span>" + (detail ? "<pre></pre>" : "");
+  b.querySelector("b").textContent = title;
+  b.querySelector("span").textContent = "Close Go2FGym and open it again. If it keeps happening, run the installer once more.";
+  if (detail) b.querySelector("pre").textContent = detail;
+};
+setTimeout(function () { if (!window.__booted) window.__bootNote("Still loading…"); }, 25000);
+document.addEventListener("visibilitychange", function () {   // coming back into view: redraw
+  if (document.visibilityState !== "visible") return;
+  var d = document.documentElement; d.style.transform = "translateZ(0)"; void d.offsetHeight; d.style.transform = "";
+});
+window.__boot = function (st) {
+  if (window.__booted) return;
+  if (!st.lib || !st.lib.length) st.lib = [].concat.apply([], window.__parts);
+  window.__parts = [];
+  window.__booted = true; window.__INIT = st;
+  requestAnimationFrame(function () {   // make WebKit draw again once the data is in (helps if the window came up blank)
+    var d = document.documentElement; d.style.transform = "translateZ(0)"; void d.offsetHeight;
+    requestAnimationFrame(function () { d.style.transform = ""; });
+  });
+  (${webApp.toString()})();
+};</script></body></html>`;
 }
 
 // ---------------------------------------------------------------- web UI (runs inside the WebView)
 function webApp() {
   "use strict";
-  const BOOT = window.__BOOT || {};
+  const BOOT = window.__INIT || {};   // handed over by window.__boot (safe-startup recipe)
   const CFG = BOOT.cfg || { unit: "kg", rest: 90, equipment: [] };
   const UNIT = CFG.unit;
 
@@ -1627,6 +1741,64 @@ function webApp() {
   // The in-app updates blueprint's name for the update hook (HG.showUpdate stays for older callers).
   window.__showUpdate = (u) => HG.showUpdate(u);
 
+  // ── AI invitation (app-blueprints · ai-invitation) ── ES5, no backticks, as in the blueprint.
+  window.__aiInvite = function (c) {
+    var tries = 0;
+    (function wait() {
+      // Never over the launch screen, another sheet (or the exercise preview), or a task the app says can't be interrupted.
+      var busy = document.querySelector("#splash:not(.gone)") || document.getElementById("upd") || document.getElementById("aiinv") ||
+        document.querySelector(".sheet.open, #cfgsheet.open, #aisheet.open, #pv") || (window.canInvite && !window.canInvite());
+      if (busy) { if (++tries < 40) setTimeout(wait, 500); return; }   // gives up after 20 s; it comes back another day
+      setTimeout(function () { if (!document.getElementById("aiinv")) showInvite(c); }, 600);
+    })();
+  };
+  function escI(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]; }); }
+  function showInvite(c) {
+    var el = document.createElement("div");
+    el.id = "aiinv";
+    el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); el.setAttribute("aria-labelledby", "aiinv-t");
+    el.innerHTML = '<div class="aiinv-card">' +
+      '<div class="aiinv-spark" aria-hidden="true">✦</div>' +
+      '<h2 id="aiinv-t">' + escI(c.title) + '</h2>' +
+      '<p class="aiinv-lead">Add an AI key and these switch on:</p>' +
+      '<ul class="aiinv-perks">' + c.perks.slice(0, 3).map(function (p, i) {
+        return '<li style="--i:' + i + '"><span class="aiinv-ico" aria-hidden="true">' + escI(p.icon) + '</span>' + escI(p.text) + '</li>';
+      }).join("") + '</ul>' +
+      '<ol class="aiinv-steps"><li>Get a key from Claude or OpenAI</li><li>Paste it in AI settings</li><li>That’s it: these turn on at once</li></ol>' +
+      '<button class="aiinv-go" data-inv="open">Turn on AI</button>' +
+      '<div class="aiinv-row"><button class="aiinv-later" data-inv="later">Later</button>' +
+      '<button class="aiinv-never" data-inv="never">Don’t remind me again</button></div></div>';
+    el.addEventListener("click", function (e) {
+      var b = e.target.closest ? e.target.closest("[data-inv]") : null;
+      if (!b && e.target !== el) return;      // taps inside the card do nothing
+      closeInvite(b ? b.dataset.inv : "later");   // a tap on the dimmed backdrop counts as Later
+    });
+    document.body.appendChild(el);
+    send("aiinvite", { v: "shown" });
+    var go = el.querySelector(".aiinv-go"); if (go && go.focus) go.focus();
+  }
+  function closeInvite(what) {
+    var el = document.getElementById("aiinv"); if (!el || el.classList.contains("out")) return;
+    el.classList.add("out");
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 260);
+    send("aiinvite", { v: what });
+    if (what === "open") setTimeout(function () {
+      window.__aiOpen();   // the same thing the Settings row's "ai-open" action does
+      // Go2FGym's AI sheet marks its buttons data-aiact and draws itself again when its state arrives from Scriptable
+      // (a moment later), so the pulse is put back on the new "Add key" button until it has run.
+      var until = Date.now() + 2600;
+      (function nudge() {
+        var add = document.querySelector('#aisheet [data-aiact="aikey"]');   // the provider in use comes first
+        if (add && !add.classList.contains("aiinv-nudge")) { add.classList.add("aiinv-nudge"); if (add.scrollIntoView) add.scrollIntoView({ block: "center" }); }
+        if (Date.now() < until) setTimeout(nudge, 100);
+        else if (add) add.classList.remove("aiinv-nudge");
+      })();
+    }, 280);
+  }
+  // No invitation before the disclaimer is accepted, during a workout (a session with exercises, its rest timer
+  // included) or while the library downloads: those moments must not be interrupted.
+  window.canInvite = function () { return !!S.consent && !(S.session && S.session.entries.length) && !S.sync; };
+
   // ------------------------------------------------ Settings (app-blueprints · settings): every change applies at once and is saved; Done closes
   const EQ_NAMES = { "body only": "Body weight", dumbbell: "Dumbbells", barbell: "Barbell", bands: "Bands", kettlebells: "Kettlebells", "e-z curl bar": "E-Z curl bar", "medicine ball": "Medicine ball", "exercise ball": "Exercise ball", "foam roll": "Foam roller", other: "Other" };
   const LOOK = Object.assign({ theme: "auto", density: "comfortable", font: "sans", textSize: 1 }, BOOT.look || {});
@@ -1709,13 +1881,17 @@ function webApp() {
       <h3 class="sec">Updates</h3>
       ${swRow("checkUpdates", "Offer new versions", `You have Go2FGym ${SET.version}. “Later” waits two days.`, s.checkUpdates)}
       <div class="srow"><div class="grow"><b>Check for updates now</b><small id="updmsg" class="muted" aria-live="polite"></small></div><button class="sm" data-act="updcheck">Check</button></div>
+      <div class="srow"><div class="grow"><b>Start-up log</b><small class="muted">What happened the last times Go2FGym opened</small></div><button class="sm" data-act="startlog">${startLogText == null ? "Show" : "Hide"}</button></div>
+      <pre id="startlog" class="startlog" ${startLogText == null ? "hidden" : ""}>${esc(startLogText || "")}</pre>
       ${SET.cfgSchema.map((sec) => `<h3 class="sec">${esc(sec.title)}</h3>${sec.items.map(fieldHTML).join("")}`).join("")}
       <div class="cfg-foot"><span class="note">${changed ? `${changed} setting${changed === 1 ? "" : "s"} changed` : "All settings are at their original values"}</span>
         ${changed ? `<button class="sm danger ${cfgArmed ? "armed" : ""}" data-act="cfgall">${cfgArmed ? "Confirm reset" : "Reset all"}</button>` : ""}</div>
       ${builtWithHTML()}</div>`;
     el.scrollTop = keep;   // re-renders must not jump back to the top
   }
-  function openSettings() { if (cfgOpen) return; cfgOpen = true; libDirty = false; send("settings-get", {}); renderCfg(); }
+  // Settings › Updates › Start-up log: the text Scriptable sent (HG.onStartLog), or null while hidden. Kept across re-renders.
+  let startLogText = null;
+  function openSettings() { if (cfgOpen) return; cfgOpen = true; libDirty = false; startLogText = null; send("settings-get", {}); renderCfg(); }
   function closeSettings() { cfgOpen = false; cfgArmed = false; renderCfg(); send("settings-done", {}); }
   function cfgClick(e) {
     e.stopPropagation();   // the sheet's taps never reach the app's own click handler
@@ -1737,6 +1913,10 @@ function webApp() {
     if (act === "openurl") return send("openurl", { v });
     if (act === "updcheck") { const um = document.getElementById("updmsg"); t.disabled = true; if (um) um.textContent = "Checking…"; return send("update-check", {}); }
     if (act === "sync") { closeSettings(); return send("sync", {}); }
+    if (act === "startlog") {   // the bridge is a message queue: Scriptable answers with HG.onStartLog
+      if (startLogText != null) { startLogText = null; return renderCfg(); }
+      t.disabled = true; return send("startlog", {});
+    }
   }
   function cfgChange(e) {
     e.stopPropagation();
@@ -3275,7 +3455,8 @@ function webApp() {
         later.hidden = false;
       }
     },
-    toast(msg) { toast(msg); },
+    onStartLog(txt) { startLogText = txt || "Nothing logged yet."; renderCfg(); },
+    toast(msg, isError) { toast(msg, isError); },
   };
 
   setLib(BOOT.lib);
@@ -3739,19 +3920,131 @@ body.d-compact .sess-head{padding:10px 14px}
 #cfgsheet .srow.bp{width:100%;text-align:left}
 #cfgsheet .chev{flex:none;color:var(--muted);font-size:calc(20px * var(--ts));line-height:1}
 #cfgsheet input{-webkit-user-select:text;user-select:text}
+/* Safe start-up (app-blueprints · recipe safe-startup): the placeholder until __boot, the stalled-start note, Settings › Start-up log */
+.booting{display:flex;align-items:center;justify-content:center;gap:10px;padding:80px 20px;color:var(--muted);font-size:calc(14px * var(--ts))}
+.booting.note{flex-direction:column;text-align:center;color:var(--ink-2);padding:60px 24px;border-left:0;margin:0}
+.booting.note b{font-size:calc(18px * var(--ts));color:var(--ink)}
+.booting.note pre,.startlog{max-width:100%;overflow:auto;text-align:left;font:12px/1.45 ui-monospace,Menlo,monospace;background:var(--sheet);border:1px solid var(--rule);border-radius:10px;padding:10px;color:var(--ink-2);white-space:pre-wrap;-webkit-user-select:text;user-select:text}
+.startlog{margin:8px 0;max-height:260px}
+.busy-dot{width:15px;height:15px;flex:none;border-radius:50%;border:2px solid var(--rule);border-top-color:var(--signal);animation:bdspin .8s linear infinite}
+@keyframes bdspin{to{transform:rotate(360deg)}}
+/* AI invitation (app-blueprints · ai-invitation): above Settings and the AI sheet, below the update sheet and the launch screen */
+#aiinv{position:fixed;inset:0;z-index:47;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.45);animation:aiinvFade .25s ease both}
+#aiinv.out{animation:aiinvFadeOut .24s ease both}
+.aiinv-card{position:relative;width:100%;max-width:380px;background:var(--sheet);color:var(--ink);border:1px solid var(--rule);border-radius:24px;padding:26px 22px 16px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.35);animation:aiinvUp .5s cubic-bezier(.2,.9,.3,1.2) both}
+#aiinv.out .aiinv-card{animation:aiinvDown .24s ease both}
+.aiinv-spark{width:56px;height:56px;margin:-4px auto 10px;border-radius:18px;display:grid;place-items:center;font-size:calc(30px * var(--ts));color:var(--signal);background:var(--signal-wash);animation:aiinvTwinkle 2.4s ease-in-out .5s infinite}
+#aiinv h2{margin:0 0 6px;font-family:var(--display);font-size:calc(23px * var(--ts));line-height:1.2;font-weight:800}
+.aiinv-lead{margin:0 0 14px;color:var(--ink-2);font-size:calc(15px * var(--ts))}
+.aiinv-perks{list-style:none;margin:0 0 14px;padding:0;text-align:left}
+.aiinv-perks li{display:flex;gap:10px;align-items:center;padding:9px 12px;margin-bottom:6px;border-radius:12px;background:var(--signal-wash);font-size:calc(15px * var(--ts));font-weight:600;animation:aiinvPerk .4s ease both;animation-delay:calc(.25s + var(--i) * .09s)}
+.aiinv-ico{flex:none;width:22px;text-align:center}
+.aiinv-steps{margin:0 0 16px;padding-left:22px;text-align:left;color:var(--muted);font-size:calc(13px * var(--ts));line-height:1.6}
+.aiinv-go{display:block;width:100%;border:0;border-radius:14px;padding:14px;font:700 calc(17px * var(--ts)) var(--display);color:var(--sheet);background:var(--signal);animation:aiinvGlow 1.6s ease-in-out .9s 2}
+.aiinv-go:focus{outline:none}
+.aiinv-go:focus-visible{box-shadow:0 0 0 4px var(--signal-wash)}
+.aiinv-row{display:flex;justify-content:space-between;gap:8px;margin-top:6px}
+.aiinv-later,.aiinv-never{border:0;background:none;padding:12px 6px;color:var(--muted);font:600 calc(14px * var(--ts)) var(--sans, inherit)}
+.aiinv-later{color:var(--ink-2)}
+.aiinv-nudge{animation:aiinvGlow 1.2s ease-in-out 2}
+@keyframes aiinvFade{from{opacity:0}to{opacity:1}}
+@keyframes aiinvFadeOut{from{opacity:1}to{opacity:0}}
+@keyframes aiinvUp{from{opacity:0;transform:translateY(40px) scale(.94)}to{opacity:1;transform:none}}
+@keyframes aiinvDown{to{opacity:0;transform:translateY(24px) scale(.97)}}
+@keyframes aiinvPerk{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
+@keyframes aiinvTwinkle{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(1.12) rotate(12deg)}}
+@keyframes aiinvGlow{0%,100%{box-shadow:0 0 0 0 transparent}50%{box-shadow:0 0 0 6px var(--signal-wash)}}
+@media (prefers-reduced-motion:reduce){
+  #aiinv,#aiinv.out,.aiinv-card,#aiinv.out .aiinv-card,.aiinv-perks li,.aiinv-spark,.aiinv-go,.aiinv-nudge{animation:none}
+  #aiinv.out{opacity:0;transition:opacity .2s}
+  .busy-dot{animation-duration:2.4s}
+}
 `;
 
-// ---------------------------------------------------------------- main
-async function main() {
-  aiMigrate(["go2fgym-openai-key"]);   // 1.5.x kept one OpenAI key under another name (app runs only: it writes)
-  await runApp();
+// ---------------------------------------------------------------- run (app-blueprints · recipe safe-startup)
+// A run marks itself as open while its window is on screen. A new run waits at most 1.5 s for an older
+// window to close, then opens anyway: quick taps on the widget don't stack up copies.
+const lockFm = FileManager.local();
+const RUN_LOCK = lockFm.joinPath(lockFm.temporaryDirectory(), APP_ID + '-running');
+let lockTimer = null;
+const lockAge = () => { try { return lockFm.fileExists(RUN_LOCK) ? Date.now() - Number(lockFm.readString(RUN_LOCK)) : Infinity; } catch (e) { return Infinity; } };
+const pause = ms => new Promise(r => Timer.schedule(ms, false, r));
+async function waitForOtherWindow() { for (let waited = 0; lockAge() < 2500 && waited < 1500; waited += 300) await pause(300); }
+function holdLock() {
+  const beat = () => { try { lockFm.writeString(RUN_LOCK, String(Date.now())); } catch (e) {} };
+  beat(); lockTimer = Timer.schedule(1000, true, beat);
+}
+function releaseLock() {
+  if (lockTimer) { lockTimer.invalidate(); lockTimer = null; }
+  try { if (lockFm.fileExists(RUN_LOCK)) lockFm.remove(RUN_LOCK); } catch (e) {}
+}
+// Talks to the page with a time limit, so a stuck page can't stall the app.
+const ev = (js, ms = 20000) => Promise.race([wv.evaluateJavaScript(js, false), pause(ms).then(() => { throw new Error("the page didn't respond in " + ms / 1000 + " s"); })]);
+
+async function bootApp(isClosed) {
+  const t0 = Date.now();
+  startLog(`Go2FGym ${VERSION}: reading data`);
+  await loadData();
+  startLog(`data read in ${((Date.now() - t0) / 1000).toFixed(1)} s: ${history.sessions.length} workouts, ${lib.length} exercises${loadIssues.length ? "; missing: " + loadIssues.join(", ") : ""}`);
+  if (isClosed()) return;
+  aiMigrate(["go2fgym-openai-key"]);   // 1.5.x kept one OpenAI key under another name (app runs only; it saves only data that was read)
+  await handOver();                    // the library in pieces, then window.__boot
+  let seen = "";
+  try { seen = await ev(`document.visibilityState + ", " + innerWidth + "x" + innerHeight`, 5000); } catch (e) { seen = String(e.message || e); }
+  startLog(`screen ready in ${((Date.now() - t0) / 1000).toFixed(1)} s (page: ${seen})`);
+  if (loadIssues.length) js(`HG.toast(${J("Some of your data is still coming from iCloud. Nothing will be saved until you reopen Go2FGym.")},true)`);
+  // Deferred work, once the first screen is drawn: the widget's snapshot, then updates (and the AI invitation), then the widget's icon.
+  Timer.schedule(700, false, () => {
+    if (isClosed() || !dataLoaded) return;
+    widgetSave();
+  });
+  Timer.schedule(3500, false, () => {
+    if (isClosed()) return;
+    checkForUpdate().then((u) => {
+      pendingUpdate = u;
+      if (u && !isClosed()) return js(`window.__showUpdate(${J(u)})`);   // the sheet waits for the disclaimer on a first launch
+    }).catch(() => {}).then(() => { if (!isClosed()) inviteIfDue(); });   // AI invitation: after the update check, never with an offer
+  });
+  Timer.schedule(6000, false, () => { widgetIcon(); });
 }
 
-await loadSettings();   // before every branch: app, widget and Shortcuts runs all use the saved choices
+async function main() {
+  await waitForOtherWindow();
+  wv = new WebView();
+  // A page built before its window is on screen can stay blank on some iPhones (the page runs, nothing is drawn),
+  // most often when opened from the widget. So: an empty dark window first, then the real page built inside it.
+  await wv.loadHTML('<html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;background:#0E1116"></body></html>');
+  const presented = wv.present(true);
+  holdLock();
+  await pause(300);                          // let the window finish appearing
+  startLog("window on screen");
+  await Promise.race([wv.loadHTML(buildHTML()), pause(15000)]);   // the launch screen, drawn on screen
+  let closed = false;
+  presented.then(() => { closed = true; releaseLock(); }, () => { closed = true; releaseLock(); });
+  bootApp(() => closed).catch(e => {         // runs beside the window: closing it never waits on this
+    startLog("start-up failed: " + (e.message || e));
+    let log = "";
+    try { log = FileManager.local().readString(LOG_PATH).split("\n").slice(-12).join("\n"); } catch (x) {}
+    if (!closed) wv.evaluateJavaScript(`window.__bootNote("Go2FGym couldn't open", ${J(log)})`, false).catch(() => {});
+  });
+  // Instead of only awaiting the window: the page's messages are collected until it closes (see pump).
+  while (!closed) {
+    await pump(() => !closed);
+    await pause(200);
+  }
+  await pump(() => false);                   // catch anything queued right before closing
+  closed = true;
+  releaseLock();
+  // Nothing else to save: every change was saved when it was made, and write() skips data that was never read.
+  widgetSave();                              // only when the data was read
+}
+
+// Settings are loaded first, before every branch (app, widget and Shortcuts runs all use the saved choices); data is read in each branch.
+await loadSettings();
 if (config.runsInWidget || config.runsInAccessoryWidget) {
+  await loadData(true);
   await runWidget();             // never builds or presents a WebView, Alert or QuickLook
 } else {
-  widgetIcon();                  // caches the logo tile for the widget, in the background
   await main();
 }
 Script.complete();
