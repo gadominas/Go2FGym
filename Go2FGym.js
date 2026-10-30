@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.13.0';
+const VERSION = '1.14.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -59,7 +59,7 @@ const KC_UPDATE_SNOOZE = 'go2fgym-update-snooze';   // Keychain key, unique per 
 const BLUEPRINTS_REPO = 'https://github.com/gadominas/app-blueprints';
 const BLUEPRINTS = [
   { id: 'in-app-updates', name: 'In-app updates', version: '1.0.0', since: '1.7.0' },
-  { id: 'settings', name: 'Settings', version: '1.0.0', since: '1.7.0' },
+  { id: 'settings', name: 'Settings', version: '1.1.0', since: '1.14.0' },
   { id: 'ai-configuration', name: 'AI configuration', version: '1.0.0', since: '1.6.0' },
   { id: 'launch-screen', name: 'Launch screen', version: '1.0.0', since: '1.11.0' },
   { id: 'widgets', name: 'Widgets', version: '1.0.0', since: '1.12.0' },
@@ -1900,6 +1900,20 @@ function webApp() {
       <button class="srow bp" data-act="openurl" data-v="${esc(SET.blueprintsRepo)}"><div class="grow"><b>All blueprints</b><small class="muted">${esc(SET.blueprintsRepo.replace("https://", ""))}</small></div><span class="chev" aria-hidden="true">›</span></button>`;
   }
   let libDirty = false;
+  // Settings blueprint 1.1.0: each section's rows in one card (.grp), built right after every render.
+  // A heading's explanation (p.hint right under it) and the changed-count footer (.cfg-foot) stay outside.
+  function cardSections(body) {
+    if (!body) return;
+    var inSec = false, grp = null, kids = Array.prototype.slice.call(body.children);
+    kids.forEach(function (n) {
+      var c = n.classList;
+      if (n.tagName === "H3" && c.contains("sec")) { inSec = true; grp = null; return; }
+      if (!inSec || c.contains("grp") || c.contains("cfg-foot")) { grp = null; return; }
+      if (!grp && n.tagName === "P" && c.contains("hint")) return;
+      if (!grp) { grp = document.createElement("div"); grp.className = "grp"; body.insertBefore(grp, n); }
+      grp.appendChild(n);
+    });
+  }
   function renderCfg() {
     const el = cfgSheet(), keep = el.scrollTop;
     el.classList.toggle("open", cfgOpen);
@@ -1931,6 +1945,7 @@ function webApp() {
       <div class="cfg-foot"><span class="note">${changed ? `${changed} setting${changed === 1 ? "" : "s"} changed` : "All settings are at their original values"}</span>
         ${changed ? `<button class="sm danger ${cfgArmed ? "armed" : ""}" data-act="cfgall">${cfgArmed ? "Confirm reset" : "Reset all"}</button>` : ""}</div>
       ${builtWithHTML()}</div>`;
+    cardSections(el.querySelector(".sh-body"));   // Settings 1.1.0: one card per section
     el.scrollTop = keep;   // re-renders must not jump back to the top
   }
   // Settings › Updates › Start-up log: the text Scriptable sent (HG.onStartLog), or null while hidden. Kept across re-renders.
@@ -3960,6 +3975,12 @@ body.d-compact .sess-head{padding:10px 14px}
 #cfgsheet textarea.cfgsel{resize:none}
 #cfgsheet .cfgin:focus,#cfgsheet .cfgsel:focus{outline:2px solid var(--signal);outline-offset:-1px}
 #cfgsheet .cfg-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-top:18px}
+/* Settings blueprint 1.1.0: sections are cards under small muted capitals */
+#cfgsheet h3.sec{font:700 calc(12.5px * var(--ts, 1))/1.2 var(--sans, -apple-system, system-ui, sans-serif);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:28px 4px 8px}
+#cfgsheet .grp{background:var(--sheet);border:1px solid var(--rule);border-radius:16px;padding:0 16px;overflow:hidden}
+#cfgsheet .grp>*:last-child{border-bottom:0}
+#cfgsheet .grp .lk-row{margin:0;padding:12px 0;border-bottom:1px solid var(--rule)}
+#cfgsheet .cfg-foot{margin:10px 4px 0}
 #cfgsheet .note{font-size:12.5px;color:var(--muted)}
 #cfgsheet .srow.bp{width:100%;text-align:left}
 #cfgsheet .chev{flex:none;color:var(--muted);font-size:calc(20px * var(--ts));line-height:1}
