@@ -16,7 +16,8 @@
  * - Without an AI key, a short card now and then shows what the AI coach adds (app-blueprints · ai-invitation).
  *   The BLUEPRINTS block below lists every shared blueprint this app follows (Settings › Built with).
  * - Starts safely (app-blueprints · recipe safe-startup): window first, data after, nothing saved over a file
- *   that wasn't read, one window at a time, and a start-up log in Settings › Updates.
+ *   that wasn't read, a damaged file kept aside (<name>.broken-<time>.json) so saving carries on, one window
+ *   at a time, and a start-up log in Settings › Updates.
  *
  * Exercise data and photos: free-exercise-db by yuhonas (public domain,
  * Unlicense) — https://github.com/yuhonas/free-exercise-db
@@ -62,7 +63,7 @@ const BLUEPRINTS = [
   { id: 'ai-configuration', name: 'AI configuration', version: '1.0.0', since: '1.6.0' },
   { id: 'launch-screen', name: 'Launch screen', version: '1.0.0', since: '1.11.0' },
   { id: 'widgets', name: 'Widgets', version: '1.0.0', since: '1.12.0' },
-  { id: 'ai-invitation', name: 'AI invitation', version: '1.2.0', since: '1.13.0' },
+  { id: 'ai-invitation', name: 'AI invitation', version: '1.2.1', since: '1.13.0' },
 ];
 
 // ---------------------------------------------------------------- storage
@@ -95,18 +96,35 @@ function startLog(msg) {
     lfm.writeString(LOG_PATH, old.concat(line).join("\n"));
   } catch (e) {}
 }
-const loadIssues = [];   // files iCloud didn't hand over in time, or that couldn't be read
+const loadIssues = [];    // files that didn't arrive (iCloud too slow, or unreadable): never written this run
+const loadRepaired = [];  // files that arrived damaged: kept aside as <name>.broken-<time>.json, then started fresh
 async function load(n, def, waitMs = 10000) {
   const p = SP(n);
   if (!sfm.fileExists(p)) return def;
+  let txt;
   try {
     if (sfm.isFileStoredIniCloud(p) && !sfm.isFileDownloaded(p)) {
       // iCloud can take a long time (or forever, offline): never let start-up hang on it
       await Promise.race([sfm.downloadFileFromiCloud(p), new Promise(r => Timer.schedule(waitMs, false, r))]);
       if (!sfm.isFileDownloaded(p)) { loadIssues.push(n); startLog(`iCloud didn't deliver ${n}.json in ${waitMs / 1000} s`); return def; }
     }
-    return JSON.parse(sfm.readString(p));
-  } catch (e) { loadIssues.push(n); startLog(`Couldn't read ${n}.json: ${e}`); return def; }   // a broken file falls back to defaults, never crashes
+    txt = sfm.readString(p);
+  } catch (e) { loadIssues.push(n); startLog(`Couldn't read ${n}.json: ${e}`); return def; }   // not read: never saved over
+  try { return JSON.parse(txt); }
+  catch (e) { keepBroken(sfm, p, n, txt); return def; }
+}
+// It arrived but is damaged: keep a copy next to it, then start this file fresh so saving can carry on (1.1.0).
+// Without this, one damaged file stopped the app from ever saving again. The widget reads the data on every refresh
+// and never saves, so a copy that's already there is not made again. The parse error isn't logged: it can quote the file.
+function keepBroken(fm, p, n, txt) {
+  try {
+    const base = p.replace(/\.json$/, ""), dir = p.slice(0, p.lastIndexOf("/")), pre = base.slice(dir.length + 1) + ".broken-";
+    let kept = false;
+    try { kept = fm.listContents(dir).some(f => f.startsWith(pre) && fm.readString(fm.joinPath(dir, f)) === txt); } catch (_) {}
+    if (!kept) fm.writeString(base + ".broken-" + Date.now() + ".json", txt);
+    if (!loadRepaired.includes(n)) loadRepaired.push(n);
+    startLog(`${n}.json was damaged (not valid JSON); ${kept ? "a copy was already kept" : "kept a copy"} and started it fresh`);
+  } catch (e) { loadIssues.push(n); startLog(`${n}.json was damaged and couldn't be copied aside`); }   // no copy, no overwrite
 }
 // Settings that were never read are never saved over (set in loadSettings). Data files have their own guard (writeJSON, aiWrite).
 let settingsOk = false;
@@ -243,14 +261,24 @@ const J = (v) => JSON.stringify(v).replace(/\u2028/g, "\\u2028").replace(/\u2029
 // Your own data on this iPhone: read in loadData(), and only written once it was read, so a failed read is never saved over.
 // The exercise library (exercises.json, library-meta.json, photos) is a download, not your data: it can always be fetched again.
 const USER_FILES = [P.history, P.draft, P.consent];
+// A file that couldn't be read is never written this run (loadIssues). One that was read but is damaged is kept aside
+// as <name>.broken-<time>.json and started fresh (keepBroken, loadRepaired), so saving carries on.
 function readJSON(path, fallback) {
-  try {
-    if (fm.fileExists(path)) return JSON.parse(fm.readString(path));
-  } catch (e) {
+  if (!fm.fileExists(path)) return fallback;
+  const user = USER_FILES.includes(path), n = fm.fileName(path);
+  let txt;
+  try { txt = fm.readString(path); }
+  catch (e) {
     console.error(`Could not read ${path}: ${e}`);
-    if (USER_FILES.includes(path)) { loadIssues.push(fm.fileName(path)); startLog(`Couldn't read ${fm.fileName(path, true)}: ${e}`); }
+    if (user) { loadIssues.push(n); startLog(`Couldn't read ${n}.json: ${e}`); }
+    return fallback;
   }
-  return fallback;
+  try { return JSON.parse(txt); }
+  catch (e) {
+    console.error(`${path} is not valid JSON`);   // the parser's message can quote the file, so it isn't logged
+    if (user) keepBroken(fm, path, n, txt);   // the library is a download: it can always be fetched again
+    return fallback;
+  }
 }
 function writeJSON(path, value) {
   if (USER_FILES.includes(path) && !dataLoaded) return;   // never save over data that was never read
@@ -289,10 +317,12 @@ function saveHistory(h) {
     }
   }
 }
-async function restoreFromBackupIfNeeded(waitMs = 10000) {
-  if (fm.fileExists(P.history)) return;
+// Restores history.json from the iCloud backup when it's missing, or (damaged = true) when it was damaged and has
+// been kept aside. True when the backup's text was written to history.json.
+async function restoreFromBackupIfNeeded(waitMs = 10000, damaged = false) {
+  if (fm.fileExists(P.history) && !damaged) return false;
   const c = icloudDir();
-  if (!c) return;
+  if (!c) return false;
   let p = c.ic.joinPath(c.dir, "history.json");
   const legacy = c.ic.joinPath(c.ic.joinPath(c.ic.documentsDirectory(), "HomeGym-backup"), "history.json");
   if (!c.ic.fileExists(p) && c.ic.fileExists(legacy)) p = legacy;
@@ -302,14 +332,16 @@ async function restoreFromBackupIfNeeded(waitMs = 10000) {
         // iCloud can take a long time (or forever, offline): never let start-up hang on it. Until the backup is in,
         // history counts as unread, so a new workout can't replace the backup with a history of one.
         await Promise.race([c.ic.downloadFileFromiCloud(p), new Promise(r => Timer.schedule(waitMs, false, r))]);
-        if (!c.ic.isFileDownloaded(p)) { loadIssues.push("history"); startLog(`iCloud didn't deliver the history backup in ${waitMs / 1000} s`); return; }
+        if (!c.ic.isFileDownloaded(p)) { loadIssues.push("history"); startLog(`iCloud didn't deliver the history backup in ${waitMs / 1000} s`); return false; }
       }
       fm.writeString(P.history, c.ic.readString(p));
       startLog("history restored from the iCloud backup");
+      return true;
     }
   } catch (e) {
     console.log(`No backup restored: ${e}`);
   }
+  return false;
 }
 
 // Data is read in loadData(): the app shows its first screen before reading it (the library alone is several MB,
@@ -319,9 +351,15 @@ let history = { version: 1, sessions: [] };         // your workouts
 let draft = null, meta = null, consent = null;      // the workout in progress, the library's download date, the disclaimer
 // The widget passes true: it reads only the workouts, and never restores (a widget run never writes).
 async function loadData(forWidget = false) {
-  loadIssues.length = 0;
+  loadIssues.length = 0;   // loadRepaired is kept, so a damaged settings.json (read before this) still gets its toast
   if (!forWidget) await restoreFromBackupIfNeeded();
   history = loadHistory();
+  if (!forWidget && loadRepaired.includes("history")) {
+    // history.json was damaged and is kept aside: the iCloud backup comes before a fresh start.
+    loadRepaired.splice(loadRepaired.indexOf("history"), 1);
+    if (await restoreFromBackupIfNeeded(10000, true)) history = loadHistory();   // a damaged backup is kept aside in turn
+    else if (!loadIssues.includes("history")) loadRepaired.push("history");      // no backup: started fresh
+  }
   if (!forWidget) {
     draft = readJSON(P.draft, null);
     consent = readJSON(P.consent, null);
@@ -581,10 +619,15 @@ const PROVIDERS = { anthropic: "Claude", openai: "OpenAI" };
 const aiFm = FileManager.local();
 const aiPath = name => aiFm.joinPath(aiFm.documentsDirectory(), "go2fgym-" + name + ".json");
 // Both are read in loadData() and, like your workouts, only written once they were read.
+// One that was read but is damaged is kept aside as go2fgym-<name>.broken-<time>.json and started fresh (loadRepaired).
 function aiLoad(name, fallback) {
-  try { const p = aiPath(name); if (aiFm.fileExists(p)) return JSON.parse(aiFm.readString(p)); }
-  catch (e) { console.log("AI: couldn't read " + name + ": " + e); loadIssues.push(name); startLog(`Couldn't read go2fgym-${name}.json: ${e}`); }
-  return fallback;
+  const p = aiPath(name);
+  if (!aiFm.fileExists(p)) return fallback;
+  let txt;
+  try { txt = aiFm.readString(p); }
+  catch (e) { console.log("AI: couldn't read " + name + ": " + e); loadIssues.push(name); startLog(`Couldn't read go2fgym-${name}.json: ${e}`); return fallback; }
+  try { return JSON.parse(txt); }
+  catch (e) { console.log("AI: " + name + " is not valid JSON"); keepBroken(aiFm, p, name, txt); return fallback; }
 }
 function aiWrite(name, data) {
   if (!dataLoaded) return;   // never save over AI settings or usage that were never read
@@ -1788,7 +1831,8 @@ function webApp() {
       // (a moment later), so the pulse is put back on the new "Add key" button until it has run.
       var until = Date.now() + 2600;
       (function nudge() {
-        var add = document.querySelector('#aisheet [data-aiact="aikey"]');   // the provider in use comes first
+        // The Add key of the provider in use: its card is the one marked .active (ai-invitation 1.2.1).
+        var add = document.querySelector('#aisheet .aicard.active [data-aiact="aikey"]') || document.querySelector('#aisheet [data-aiact="aikey"]');
         if (add && !add.classList.contains("aiinv-nudge")) { add.classList.add("aiinv-nudge"); if (add.scrollIntoView) add.scrollIntoView({ block: "center" }); }
         if (Date.now() < until) setTimeout(nudge, 100);
         else if (add) add.classList.remove("aiinv-nudge");
@@ -3985,7 +4029,7 @@ async function bootApp(isClosed) {
   const t0 = Date.now();
   startLog(`Go2FGym ${VERSION}: reading data`);
   await loadData();
-  startLog(`data read in ${((Date.now() - t0) / 1000).toFixed(1)} s: ${history.sessions.length} workouts, ${lib.length} exercises${loadIssues.length ? "; missing: " + loadIssues.join(", ") : ""}`);
+  startLog(`data read in ${((Date.now() - t0) / 1000).toFixed(1)} s: ${history.sessions.length} workouts, ${lib.length} exercises${loadIssues.length ? "; missing: " + loadIssues.join(", ") : ""}${loadRepaired.length ? "; started fresh: " + loadRepaired.join(", ") : ""}`);
   if (isClosed()) return;
   aiMigrate(["go2fgym-openai-key"]);   // 1.5.x kept one OpenAI key under another name (app runs only; it saves only data that was read)
   await handOver();                    // the library in pieces, then window.__boot
@@ -3993,6 +4037,7 @@ async function bootApp(isClosed) {
   try { seen = await ev(`document.visibilityState + ", " + innerWidth + "x" + innerHeight`, 5000); } catch (e) { seen = String(e.message || e); }
   startLog(`screen ready in ${((Date.now() - t0) / 1000).toFixed(1)} s (page: ${seen})`);
   if (loadIssues.length) js(`HG.toast(${J("Some of your data is still coming from iCloud. Nothing will be saved until you reopen Go2FGym.")},true)`);
+  else if (loadRepaired.length) js(`HG.toast(${J("Some of your data couldn't be read, so Go2FGym kept a copy and started it fresh.")},true)`);
   // Deferred work, once the first screen is drawn: the widget's snapshot, then updates (and the AI invitation), then the widget's icon.
   Timer.schedule(700, false, () => {
     if (isClosed() || !dataLoaded) return;
