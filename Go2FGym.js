@@ -46,12 +46,21 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.14.0';
+const VERSION = '1.15.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
 const UPDATE_SNOOZE_MS = 2 * 24 * 3600 * 1000;   // "Later" = 2 days
 const KC_UPDATE_SNOOZE = 'go2fgym-update-snooze';   // Keychain key, unique per app
+
+// ── Anonymous usage counts (opt-in), sent to PostHog (app-blueprints · usage-analytics) ──
+// Nothing is sent until KEY is filled in AND the person agrees. Each event carries a random install ID
+// (made on this iPhone, not linked to any account), the app version and counts: never names, IDs from
+// other services, text, photos or anything the app read. Events are anonymous (no person profiles).
+// The key is PostHog's project key, made to sit in public apps: it can only add events.
+// HOST must be the region the project lives in: PostHog's other region answers "accepted" and then drops the events.
+const USAGE = { HOST: 'https://us.i.posthog.com', KEY: 'phc_yAi2PxJCRioWEKLF3uockdCf3QvyQdNABivwqpE4NCWR' };   // the shared project
+const KC_INSTALL = 'go2fgym-install-id';
 
 // ───────── Blueprints ─────────
 // Shared blueprints this app was built with (github.com/gadominas/app-blueprints). One line per blueprint, in this exact shape:
@@ -64,6 +73,7 @@ const BLUEPRINTS = [
   { id: 'launch-screen', name: 'Launch screen', version: '1.0.0', since: '1.11.0' },
   { id: 'widgets', name: 'Widgets', version: '1.0.0', since: '1.12.0' },
   { id: 'ai-invitation', name: 'AI invitation', version: '1.2.1', since: '1.13.0' },
+  { id: 'usage-analytics', name: 'Anonymous usage analytics', version: '1.1.0', since: '1.15.0' },
 ];
 
 // ---------------------------------------------------------------- storage
@@ -145,11 +155,62 @@ const settings = {
   strongman: false, olympic: false,   // exercise types that need a platform, coach or special gear
   icloudBackup: true,   // mirror history.json to iCloud Drive/Scriptable/Go2FGym-backup
   checkUpdates: true,   // offer new versions from GitHub (asks again 2 days after "Later")
+  shareUsage: false, usageAsked: false,  // anonymous usage counts: off until the person agrees
   stravaMode: "funny",  // default tone for Strava posts
   cfg: {},
   // aiInvite: { next, shown, later, off }   the AI invitation's schedule (internal state, no UI)
 };
 const saveSettings = () => write("settings", settings);
+let usageQueue = [], usageTimer = null;
+const usageAvailable = () => !!USAGE.KEY;
+const usageOn = () => usageAvailable() && !!settings.shareUsage;
+function installId() {
+  if (Keychain.contains(KC_INSTALL)) return Keychain.get(KC_INSTALL);
+  const id = UUID.string().toLowerCase();
+  Keychain.set(KC_INSTALL, id);
+  return id;
+}
+function track(event, props = {}) {
+  if (!usageOn()) return;
+  try {
+    usageQueue.push({ event, timestamp: new Date().toISOString(),
+      properties: Object.assign({ distinct_id: installId(), $process_person_profile: false, app: APP_ID, app_version: VERSION, $lib: APP_ID }, props) });
+    if (usageQueue.length >= 25) flushUsage();
+    else if (!usageTimer) usageTimer = Timer.schedule(3000, false, () => { usageTimer = null; flushUsage(); });
+  } catch (e) {}
+}
+let usageLast = null;   // { at, events, ok, status, host, error }: shown in Settings › Privacy
+async function postUsage(host, batch) {
+  const r = new Request(host + '/batch/');
+  r.method = 'POST'; r.timeoutInterval = 10; r.headers = { 'Content-Type': 'application/json' };
+  r.body = JSON.stringify({ api_key: USAGE.KEY, batch });
+  let body = '';
+  try { body = await r.loadString(); } catch (e) { return { ok: false, status: 0, host, error: String(e.message || e) }; }
+  const status = (r.response && r.response.statusCode) || 0;
+  return { ok: status >= 200 && status < 300, status, host, error: status >= 200 && status < 300 ? '' : String(body || '').slice(0, 200) };
+}
+// Sends what's queued in one request. Never slows the app; if it fails, those counts are gone (and the log says why).
+async function flushUsage() {
+  if (!usageQueue.length) return usageLast;
+  if (!usageOn()) { usageQueue = []; return usageLast; }
+  const batch = usageQueue.splice(0, usageQueue.length);
+  const res = await postUsage(USAGE.HOST, batch);
+  usageLast = Object.assign({ at: Date.now(), events: batch.length }, res);
+  try { startLog(`usage: ${batch.length} event${batch.length === 1 ? '' : 's'} → ${res.ok ? 'sent to ' + res.host.replace('https://', '') : 'not sent: ' + (res.status ? 'HTTP ' + res.status + ' ' : '') + res.error}`); } catch (e) {}
+  return usageLast;
+}
+function usageStatus() {
+  const u = usageLast;
+  if (!u) return '';
+  const t = new Date(u.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return u.ok ? `Last sent ${t}: ${u.events} event${u.events === 1 ? '' : 's'}, accepted (${u.host.replace('https://', '')})`
+              : `Last try ${t} failed: ${u.status ? 'HTTP ' + u.status + ' ' : ''}${u.error}`;
+}
+function setUsage(on) {
+  settings.shareUsage = !!on; settings.usageAsked = true; saveSettings();
+  if (on) track('usage_opt_in');
+  else { usageQueue = []; if (Keychain.contains(KC_INSTALL)) Keychain.remove(KC_INSTALL); }   // a fresh ID if switched on again
+}
 const skipCategories = () => [settings.strongman ? null : "strongman", settings.olympic ? null : "olympic weightlifting"].filter(Boolean);
 
 // Every key the page may change, with its check and what closing Settings must then do.
@@ -158,7 +219,7 @@ const SET_KEYS = {
   font: [(v) => ["sans", "serif"].includes(v), ""], textSize: [(v) => [0.92, 1, 1.12, 1.25].includes(+v), ""],
   unit: [(v) => ["kg", "lb"].includes(v), "reload"],
   strongman: ["bool", "library"], olympic: ["bool", "library"],
-  icloudBackup: ["bool", ""], checkUpdates: ["bool", ""],
+  icloudBackup: ["bool", ""], checkUpdates: ["bool", ""], shareUsage: ["bool", ""],
   stravaMode: [(v) => ["serious", "funny", "neutral"].includes(v), ""],
 };
 // Returns the effect ('', 'library' or 'reload'), or null when the key or value isn't allowed.
@@ -250,6 +311,7 @@ function settingsState() {
     palettes: PALETTES, version: VERSION, appName: "Go2FGym",
     blueprints: BLUEPRINTS, blueprintsRepo: BLUEPRINTS_REPO,
     hasKey: !!aiKey(), aiStatus: aiStatusLine(),
+    usageAvailable: usageAvailable(), usageStatus: usageStatus(),
   };
 }
 
@@ -1108,6 +1170,7 @@ function clientState() {
     version: VERSION,
     look: lookState(),
     cfg: { unit: settings.unit, rest: cfg("restSeconds"), equipment: settings.equipment, disclaimerVersion: DISCLAIMER_VERSION },
+    usageAsk: usageAvailable() && !settings.usageAsked && !settings.shareUsage,
   };
 }
 // The widget's snapshot (app-blueprints · widgets): on every open, and whenever the workouts or the library change.
@@ -1147,7 +1210,8 @@ async function handle(m) {
     case "equip":
     case "cfg": {
       let effect = "";
-      if (m.type === "set") effect = setSetting(p.k, p.v);
+      if (m.type === "set" && p.k === "shareUsage") setUsage(p.v === true || p.v === "true" || p.v === "1");   // off also deletes the install ID
+      else if (m.type === "set") effect = setSetting(p.k, p.v);
       else if (m.type === "equip") effect = toggleEquipment(p.v);
       else if (m.type === "cfg") { if (p.k === "*") settings.cfg = {}; else setCfg(p.k, p.reset ? null : p.v); }
       if (effect === null) await js(`HG.toast(${J(m.type === "equip" ? "Keep at least one kind of equipment." : "That setting can’t be changed here.")})`);
@@ -1186,6 +1250,14 @@ async function handle(m) {
     case "openurl":   // Built with: only the blueprints repository opens from here
       if (p.v === BLUEPRINTS_REPO || String(p.v).startsWith(BLUEPRINTS_REPO + "/")) await Safari.openInApp(p.v, false);
       break;
+    case "usage-consent": setUsage(p.on === "1"); flushUsage(); break;
+    case "usage-test": {
+      let ok = false, msg = "";
+      if (!usageOn()) msg = "Turn on Share anonymous usage first.";
+      else { track("usage_test"); const r = await flushUsage(); ok = !!(r && r.ok); msg = usageStatus() || "Nothing was sent."; }
+      await js(`HG.onUsageTest(${ok},${J(msg)})`);
+      break;
+    }
     case "images":
       for (const id of p.ids || []) {
         const ex = libById[id];
@@ -1202,6 +1274,8 @@ async function handle(m) {
       let out;
       try {
         out = await aiCoach(p);
+        if (out && out.data && p.name === "workout_plan") track("plan_made", { provider: aiSettings.aiProvider });
+        if (out && out.data && p.name === "workout_review") track("review_made", { provider: aiSettings.aiProvider });
       } catch (e) {
         out = { error: String((e && e.message) || e) };
       }
@@ -1217,6 +1291,7 @@ async function handle(m) {
       let msg = "";
       try {
         msg = await applyUpdate(pendingUpdate);
+        track("app_updated", { from: VERSION, to: (String(msg).match(/[0-9]+\.[0-9]+\.[0-9]+/) || [""])[0] }); flushUsage();
         ok = true;
         pendingUpdate = null;
         clearUpdateSnooze();
@@ -1228,6 +1303,7 @@ async function handle(m) {
     }
     case "copy":
       Pasteboard.copyString(String(p.text || ""));
+      if (["Title", "Description", "Title and description"].includes(p.label)) track("strava_post_copied", { part: p.label === "Title" ? "title" : p.label === "Description" ? "description" : "both" });
       await js(`HG.toast(${J(p.label ? `${p.label} copied` : "Copied")})`);
       break;
     case "accept":
@@ -1247,6 +1323,7 @@ async function handle(m) {
       if (!s || !s.id || !Array.isArray(s.entries)) throw new Error("Workout could not be saved: missing data.");
       history.sessions = history.sessions.filter((x) => x.id !== s.id).concat(s);
       saveHistory(history);
+      track("workout_finished", { sets: Math.min(999, s.entries.reduce((n, en) => n + ((en && en.sets) || []).length, 0)) });
       widgetSave();
       draft = null;
       if (dataLoaded && fm.fileExists(P.draft)) fm.remove(P.draft);
@@ -1268,6 +1345,7 @@ async function handle(m) {
           c.ic.writeString(c.ic.joinPath(c.dir, "history.csv"), csv);
           where = "iCloud Drive › Scriptable › Go2FGym-backup";
         } else fm.writeString(fm.joinPath(ROOT, "history.csv"), csv);
+        track("history_exported");
       } catch (e) {
         fm.writeString(fm.joinPath(ROOT, "history.csv"), csv);
       }
@@ -1281,6 +1359,7 @@ async function handle(m) {
     }
     case "sync": {
       meta = await syncLibrary((s) => js(`HG.onSync(${J(s)})`));
+      track("library_updated");
       lib = buildLibrary();
       libById = Object.fromEntries(lib.map((e) => [e.id, e]));
       widgetSave();
@@ -1450,6 +1529,7 @@ function webApp() {
   ];
 
   const S = {
+    usageAsk: !!BOOT.usageAsk,   // the one-time question (usage-analytics)
     lib: [], byId: {},
     history: BOOT.history || { sessions: [] },
     meta: BOOT.meta || null,
@@ -1936,6 +2016,9 @@ function webApp() {
       <h3 class="sec">AI coach</h3>
       <div class="srow"><div class="grow"><b>Keys, models and token usage</b><small id="s-aistatus">${esc(SET.hasKey ? SET.aiStatus : "Add a Claude or OpenAI key for the AI coach")}</small></div><button class="sm" data-act="ai-open">AI settings</button></div>
       <div class="lk-row"><span class="lk-l">Default Strava post tone</span>${segRow("stravaMode", [["serious", "Serious"], ["funny", "Funny"], ["neutral", "Neutral"]], s.stravaMode, "set")}</div>
+      ${SET.usageAvailable ? `<h3 class="sec">Privacy</h3>
+      ${swRow("shareUsage", "Share anonymous usage", "Counts like app opens, workouts finished and AI plans made, with a random install ID. Never your exercises, weights, notes or Strava account. Off removes the ID.", s.shareUsage)}
+      <div class="srow"><div class="grow"><b>Test the connection</b><small id="usagemsg" class="muted" aria-live="polite">${esc(SET.usageStatus || "Sends one test event now and shows PostHog’s answer.")}</small></div><button class="sm" data-act="usage-test">Send test</button></div>` : ""}
       <h3 class="sec">Updates</h3>
       ${swRow("checkUpdates", "Offer new versions", `You have Go2FGym ${SET.version}. “Later” waits two days.`, s.checkUpdates)}
       <div class="srow"><div class="grow"><b>Check for updates now</b><small id="updmsg" class="muted" aria-live="polite"></small></div><button class="sm" data-act="updcheck">Check</button></div>
@@ -1970,6 +2053,7 @@ function webApp() {
     }
     if (act === "ai-open") return window.__aiOpen();
     if (act === "openurl") return send("openurl", { v });
+    if (act === "usage-test") { const um = document.getElementById("usagemsg"); t.disabled = true; if (um) um.textContent = "Sending…"; return send("usage-test", {}); }
     if (act === "updcheck") { const um = document.getElementById("updmsg"); t.disabled = true; if (um) um.textContent = "Checking…"; return send("update-check", {}); }
     if (act === "sync") { closeSettings(); return send("sync", {}); }
     if (act === "startlog") {   // the bridge is a message queue: Scriptable answers with HG.onStartLog
@@ -2353,7 +2437,11 @@ function webApp() {
   function appHeader() {
     return `<header class="brand"><span class="brand-mark">${LOGO}</span><span class="brand-name">Go2<span class="x">F</span>Gym</span>
       <button class="club" data-a="club" aria-label="Inspired by the 7AM Club community. Opens their Instagram.">Inspired by <b>7AM Club</b> <span aria-hidden="true">↗</span></button>
-      <button class="icon" data-a="settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button></header>`;
+      <button class="icon" data-a="settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></button></header>${usageAskHTML()}`;
+  }
+  // Anonymous usage (app-blueprints · usage-analytics): the one-time question, under the header
+  function usageAskHTML() {
+    return S.usageAsk ? `<section id="usageask" aria-label="Anonymous usage"><b>Help improve Go2FGym?</b><p>Share anonymous counts, like app opens, workouts finished and AI plans made. Never your exercises, weights, notes or Strava account. You can change this in Settings.</p><div class="uabtns"><button class="primary" data-a="usage-yes">Yes, share</button><button class="ghost" data-a="usage-no">No thanks</button></div></section>` : "";
   }
 
   function renderDisclaimer() {
@@ -3249,6 +3337,8 @@ function webApp() {
     },
     aisettings: () => window.__aiOpen(),
     settings: () => openSettings(),
+    "usage-yes": () => { send("usage-consent", { on: "1" }); S.usageAsk = false; render(); HG.toast("Thank you! Change it any time in Settings."); },
+    "usage-no": () => { send("usage-consent", { on: "0" }); S.usageAsk = false; render(); HG.toast("No problem. Nothing is shared."); },
     "upd-now": (v, t) => updNow(t),
     "upd-later": () => updLater(),
     "upd-close": () => { const uo = $("#upd"); if (uo) uo.remove(); },
@@ -3483,6 +3573,10 @@ function webApp() {
       CFG.rest = st.cfg.restSeconds;
       S.ai.stravaMode = st.settings.stravaMode;
       renderCfg();
+    },
+    onUsageTest(ok, msg) {   // Settings › Privacy › Send test: PostHog's answer
+      const um = document.getElementById("usagemsg"), b = document.querySelector('#cfgsheet [data-act="usage-test"]');
+      if (um) um.textContent = (ok ? "✓ " : "✗ ") + msg; if (b) b.disabled = false;
     },
     onUpdateCheck(msg, available) {
       const um = document.getElementById("updmsg"), b = document.querySelector('#cfgsheet [data-act="updcheck"]');
@@ -3994,6 +4088,11 @@ body.d-compact .sess-head{padding:10px 14px}
 .busy-dot{width:15px;height:15px;flex:none;border-radius:50%;border:2px solid var(--rule);border-top-color:var(--signal);animation:bdspin .8s linear infinite}
 @keyframes bdspin{to{transform:rotate(360deg)}}
 /* AI invitation (app-blueprints · ai-invitation): above Settings and the AI sheet, below the update sheet and the launch screen */
+#usageask{background:var(--sheet);border:1px solid var(--rule);border-radius:18px;padding:14px 16px;margin:0 0 14px}
+#usageask b{font-size:calc(16px * var(--ts))}
+#usageask p{margin:6px 0 12px;color:var(--muted);font-size:calc(14px * var(--ts));line-height:1.4}
+.uabtns{display:flex;gap:10px}
+.uabtns button{flex:1}
 #aiinv{position:fixed;inset:0;z-index:47;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.45);animation:aiinvFade .25s ease both}
 #aiinv.out{animation:aiinvFadeOut .24s ease both}
 .aiinv-card{position:relative;width:100%;max-width:380px;background:var(--sheet);color:var(--ink);border:1px solid var(--rule);border-radius:24px;padding:26px 22px 16px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.35);animation:aiinvUp .5s cubic-bezier(.2,.9,.3,1.2) both}
@@ -4057,6 +4156,7 @@ async function bootApp(isClosed) {
   let seen = "";
   try { seen = await ev(`document.visibilityState + ", " + innerWidth + "x" + innerHeight`, 5000); } catch (e) { seen = String(e.message || e); }
   startLog(`screen ready in ${((Date.now() - t0) / 1000).toFixed(1)} s (page: ${seen})`);
+  track("app_open", { layout: settings.density, theme: settings.theme, ai_key: !!aiKey(), unit: settings.unit });
   if (loadIssues.length) js(`HG.toast(${J("Some of your data is still coming from iCloud. Nothing will be saved until you reopen Go2FGym.")},true)`);
   else if (loadRepaired.length) js(`HG.toast(${J("Some of your data couldn't be read, so Go2FGym kept a copy and started it fresh.")},true)`);
   // Deferred work, once the first screen is drawn: the widget's snapshot, then updates (and the AI invitation), then the widget's icon.
@@ -4086,7 +4186,7 @@ async function main() {
   startLog("window on screen");
   await Promise.race([wv.loadHTML(buildHTML()), pause(15000)]);   // the launch screen, drawn on screen
   let closed = false;
-  presented.then(() => { closed = true; releaseLock(); }, () => { closed = true; releaseLock(); });
+  presented.then(() => { closed = true; releaseLock(); flushUsage(); }, () => { closed = true; releaseLock(); flushUsage(); });
   bootApp(() => closed).catch(e => {         // runs beside the window: closing it never waits on this
     startLog("start-up failed: " + (e.message || e));
     let log = "";

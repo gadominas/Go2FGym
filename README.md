@@ -191,7 +191,9 @@ On a copy older than 1.5.0, run the one-line installer again and tap **Update**.
 
 ## Privacy and security
 
-- Everything stays on your phone: no account, no server, no tracking. History is a plain JSON file in Scriptable's local Go2FGym folder, with a copy in iCloud Drive › Scriptable › Go2FGym-backup if the backup is on.
+- **Anonymous usage, only if you agree.** A one-time question (and **Settings › Privacy › Share anonymous usage**) decides whether Go2FGym sends anonymous counts to PostHog's US cloud: app opens, workouts finished (the number of sets only), AI plans and reviews made, Strava posts copied, library updates and history exports, the app version and a few display settings (including kg or lb). Each event carries a random install ID made on your phone, not linked to anything else. Never sent: exercise names, weights, reps, notes, workout titles or your Strava account. Turning it off stops sending and deletes the install ID.
+
+- Everything stays on your phone: no account, no server, and no tracking unless you agree to the anonymous usage counts below. History is a plain JSON file in Scriptable's local Go2FGym folder, with a copy in iCloud Drive › Scriptable › Go2FGym-backup if the backup is on.
 - Network use: downloading the exercise library and its photos from GitHub, the app icon for the widget (once per version) and, only if you add a key, the AI coach requests to Claude or OpenAI described under [AI](#ai). The **Inspired by 7AM Club** button opens Instagram only when you tap it.
 - AI keys stay in the iOS Keychain and are only sent to their own provider.
 - The update check only downloads `releases.json` from this repository.
