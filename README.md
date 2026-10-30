@@ -71,28 +71,27 @@ Go2FGym is short for **Go to the f\*\*\*g gym**. It starts from what you have: i
 ## Install
 
 1. Get **[Scriptable](https://apps.apple.com/app/scriptable/id1405459188)** (free) on your iPhone or iPad.
-2. In Scriptable tap **+**, paste this line and tap **▶︎**:
+2. In Scriptable, tap **+**, paste these two lines, name the script *Go2FGym Installer*, and tap **▶**:
    ```js
-   const s = await new Request("https://raw.githubusercontent.com/gadominas/Go2FGym/main/install.js").loadString(); await Function("module", "return (async () => {" + s + "\n})()")(module);
+   const code = await new Request("https://raw.githubusercontent.com/gadominas/Go2FGym/main/install.js").loadString();
+   await eval("(async () => {" + code + "\n})()");
    ```
-3. Tap **Open now**, accept the disclaimer, and tap **Download library** on Wi-Fi (about 36 MB, once).
+3. Tap **Open Go2FGym**, accept the disclaimer, and tap **Download library** on Wi-Fi (about 36 MB, once). From then on Go2FGym works offline.
 
-That's it. From then on Go2FGym works offline and updates itself: new versions are offered right in the app, and your workouts, library and settings are kept. For a Home Screen icon, tap *⋯* on *Go2FGym* in Scriptable, then *Add to Home Screen*. Widget, extra equipment, backups and troubleshooting are in the **[install guide](docs/INSTALL.md)**.
+To update, tap **Update now** when Go2FGym offers a new version, or run *Go2FGym Installer* again. Your workouts, library and settings are kept.
 
 <details>
 <summary><b>Install by hand</b></summary>
 
-- **Download the file:** save [`Go2FGym.js`](Go2FGym.js) to **iCloud Drive › Scriptable**. It shows up in Scriptable automatically.
-- **Or copy and paste:** in Scriptable, tap **+**, paste the whole of `Go2FGym.js`, and name the script *Go2FGym*.
-
-Then run it, accept the disclaimer and tap **Download library**. Keep the screen open until it says the library is ready; if it's interrupted, tap **Download library** or **Update library** again and photos you already have are skipped.
+Rather not use the loader? Paste [`install.js`](install.js) or [`Go2FGym.js`](Go2FGym.js) into a new script in Scriptable yourself.
 
 </details>
 
-You need:
+What else you need:
 
-- an iPhone or iPad with about 40 MB of free space;
-- optionally, a Claude or OpenAI API key for the AI coach (see [AI](#ai)).
+- **About 40 MB of free space** on your iPhone or iPad.
+- **Optional: a Claude or OpenAI API key** for the AI coach (see [AI](#ai)).
+- **Optional: a Home Screen icon.** In Scriptable, tap *⋯* on *Go2FGym*, then *Add to Home Screen*. Moving to a new phone or uninstalling: see [Troubleshooting](#troubleshooting).
 
 ## How to use it
 
@@ -187,7 +186,7 @@ Tap the sliders icon at the top of the Train tab. Changes apply at once and are 
 
 Go2FGym checks this repository for a new version each time it opens. When one is out, a sheet shows its three best features with **Update now** and **Later**; Later hides the offer for two days. Your data and settings are kept. Every release is in [CHANGELOG.md](CHANGELOG.md). After updating, close the app and open it again. The version you have is shown at the bottom of the Train screen. To turn the checks off, switch off **Settings › Updates › Offer new versions**.
 
-On a copy older than 1.5.0, run the one-line installer again and tap **Update**.
+On a copy older than 1.5.0, run *Go2FGym Installer* again (see [Install](#install)).
 
 ## Privacy and security
 
@@ -228,9 +227,30 @@ Go2FGym is one file of plain JavaScript, HTML and CSS. Scriptable runs it and sh
 | History is empty after reinstalling | Check that **iCloud Drive › Scriptable › Go2FGym-backup › history.json** exists, then run the app again |
 | A barbell exercise needs a squat rack I don't have | Skip it. The data doesn't separate rack and floor movements. |
 | "AI coach: …" error | The message comes from the AI provider. Check your key has credit and that you're online, then try again; **Test connection** in AI settings checks the key. |
-| The installer says "Download failed" | Check your connection. The script is downloaded from `raw.githubusercontent.com`. |
+| The installer says it couldn't download Go2FGym | Check your connection and run *Go2FGym Installer* again. The script is downloaded from `raw.githubusercontent.com`. |
 
-More is in the [install guide](docs/INSTALL.md). Still stuck? Open an issue with a screenshot.
+<details>
+<summary><b>Backup, restore and new phones</b></summary>
+
+| What | Where |
+|---|---|
+| Library and photos | Scriptable's local folder, `Go2FGym/` (not backed up, re-download anytime) |
+| Workout history | Scriptable's local folder, `Go2FGym/history.json` |
+| History backup | **iCloud Drive › Scriptable › Go2FGym-backup › history.json**, updated after every save |
+| CSV export | Same iCloud folder, `history.csv`, plus the share sheet |
+
+**On a new phone**, install the script and run it. If the local history is missing and the iCloud backup exists, it's restored automatically. Then tap **Download library** again.
+
+</details>
+
+<details>
+<summary><b>Uninstall</b></summary>
+
+Delete the **Go2FGym** script in Scriptable. The history backup lives in **Files › iCloud Drive › Scriptable › Go2FGym-backup**; delete that folder too if you want it gone. The local library and history are only removed when you delete Scriptable itself.
+
+</details>
+
+Still stuck? Open an issue with a screenshot.
 
 ## Built with
 
@@ -238,7 +258,7 @@ More is in the [install guide](docs/INSTALL.md). Still stuck? Open an issue with
 - **[app-blueprints](https://github.com/gadominas/app-blueprints)**: the shared in-app updates, settings, AI configuration, launch screen and widgets that every one of these apps uses, so they look and behave alike. **Settings › Built with** lists the versions; [docs/BLUEPRINTS.md](docs/BLUEPRINTS.md) adds the deviations.
 - **[free-exercise-db](https://github.com/yuhonas/free-exercise-db)** by yuhonas: the exercise library (873 exercises with photos, steps, muscles and equipment), released into the public domain. Go2FGym downloads its `exercises.json` and photos once, then keeps them on your iPhone. It is based on **[exercises.json](https://github.com/wrkout/exercises.json)** by Ollie Jennings.
 - **[Claude API](https://www.anthropic.com/api)** (Anthropic) and **[OpenAI API](https://platform.openai.com)**: the optional AI coach, with your own key.
-- **[GitHub](https://github.com/gadominas/Go2FGym)**: hosts the app, the one-line installer and `releases.json` for in-app updates.
+- **[GitHub](https://github.com/gadominas/Go2FGym)**: hosts the app, its installer (`install.js`) and `releases.json` for in-app updates.
 
 No other libraries: the whole app is one file of plain JavaScript, HTML and CSS.
 
