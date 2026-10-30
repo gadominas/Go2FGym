@@ -6,23 +6,26 @@ All notable changes to Go2FGym. Generated from `releases.json`; edit that file, 
 
 - 🚀 **Opens every time**: The app comes up at once, even from the widget, after quick taps or with slow iCloud.
 - ✦ **Meet your AI coach**: No AI key yet? Now and then a short card shows what the coach adds, never during a workout.
-- 🛡️ **Your workouts stay safe**: If a file can’t be read, Go2FGym never saves over it: reopen and everything is back.
+- 🛡️ **Your workouts stay safe**: A file iCloud hasn’t delivered is never saved over; a damaged one is kept aside as a copy, so saving carries on.
 
 **Changes**
 
-- Safe start-up (app-blueprints · recipe safe-startup 1.0.0): an empty window in the logo’s dark colour first, then the launch screen, then your workouts and the exercise library, read after the window is on screen and handed to the page in pieces
+- Safe start-up (app-blueprints · recipe safe-startup 1.1.0): an empty window in the logo’s dark colour first, then the launch screen, then your workouts and the exercise library, read after the window is on screen and handed to the page in pieces
 - One window at a time: quick taps on the widget open one Go2FGym, not several; a new run waits at most 1.5 s for the old window and never refuses to open
 - The update check (3.5 s) and the widget’s logo tile (6 s) start after the first screen; the widget snapshot is saved after 0.7 s
 - Settings › Updates › Start-up log shows what happened the last times the app opened (kept on this iPhone, replacing startup-log.txt); a start that stalls for 25 s says so on screen
-- AI invitation (app-blueprints · ai-invitation 1.2.0): without an AI key, a card names three things the AI coach adds and leads to AI settings with Add key highlighted; at most every 3 days (weekly after the fourth Later), never on a launch that offers an update, never over Settings, a preview or the disclaimer, never during a workout or a library download, and Don’t remind me again ends it
+- AI invitation (app-blueprints · ai-invitation 1.2.1): without an AI key, a card names three things the AI coach adds and leads to AI settings with Add key highlighted on the provider in use; at most every 3 days (weekly after the fourth Later), never on a launch that offers an update, never over Settings, a preview or the disclaimer, never during a workout or a library download, and Don’t remind me again ends it
 - Removing your last AI key brings the invitation back from the next launch
 - Settings › Built with lists the AI invitation blueprint
+- A damaged file (settings, workouts, the workout in progress, the disclaimer, AI settings or usage) is copied aside as <name>.broken-<time>.json and started fresh, and Go2FGym says so; damaged workouts come back from the iCloud backup first when there is one
 
 **Fixes**
 
 - Opening the app could show a blank screen, most often from the widget or with slow iCloud
 - Restoring workouts from the iCloud backup could hang the start-up; it now waits at most 10 s, and until the backup is in, a new workout can’t replace it
 - A file that couldn’t be read (workouts, the workout in progress, the disclaimer, settings, AI settings or usage) could be saved over with empty data
+- One damaged file stopped Go2FGym from ever saving again; it now keeps a copy and carries on
+- Turn on AI could highlight Add key on the provider that isn’t in use
 
 ## 1.12.0 (2026-10-29): Your week at a glance
 
