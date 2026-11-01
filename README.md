@@ -39,6 +39,7 @@ Go2FGym is short for **Go to the f\*\*\*g gym**. It starts from what you have: i
 - **Your order.** Drag exercises by the ⠿ handle or tap **↑ Up next**; the round green check folds a finished exercise into one line and moves on. An unfinished workout comes back when you reopen the app.
 - **Next workout in one tap.** ✨ **Build next** turns your history and the coach's last advice into today's workout, with weights, sets and rest filled in.
 - **Train anywhere.** A home bench and dumbbells, a hotel room on a business trip, or a gym with half the equipment: tell the AI coach what's there and get a workout that fits.
+- **It does what you ask.** Tell the AI coach *"5 sets, super hard, runs between sets"* and that is exactly what you get, with a checklist to prove it.
 - **A coach after every workout.** A review of what went well, what to watch and what to train next, plus a Strava title and description in a **Serious**, **Funny** or **Neutral** tone.
 - **See your progress.** A calendar with a dot per muscle group trained, weekly sets, muscle balance with the most-due group, your streak, and an estimated one-rep max trend for every main lift.
 - **Your week on the Home Screen.** A widget with your last workout and this week's sessions, in every size and on the Lock Screen.
@@ -107,6 +108,7 @@ On the **Workout** tab, check weight and reps and tap **✓** after each set; le
 
 - **Build next.** Tap **✨ Build next** at the top of History or Progress. No form, no choices: Go2FGym takes the muscle groups your coach suggested after your last session (or the ones you've trained least lately), your usual workout length and all your equipment, and builds a ready-to-start plan with sets, reps, rest and weights from what you lifted last time. Check it, tap **Start ›**, and lift.
 - **Build a workout.** Open **✨ Build a workout with AI** on the Train tab, pick what to train (or **Let AI decide**), switch on only the equipment that's there, pick 20 to 60 minutes and **Easy**, **Moderate** or **Hard**, add a note if you like (*"hotel room on a work trip"*, *"lower back is sore"*), and tap **Build workout**. Check the plan, then **Start this workout**.
+- **Ask for anything, it listens.** Write the note in your own words, like *"super hard, 5 sets, a lap around the stadium between sets"*. Your note comes first: numbers are followed exactly, effort words set the intensity, and activities between sets (laps, stairs, skipping) show on every exercise and in the rest timer. The plan opens with a **Your requests** checklist showing how each request was met.
 - **After every workout.** After **Finish workout** the AI coach reviews it and writes a Strava title and description. Both are saved with the workout in **History**.
 
 ### Track your progress
