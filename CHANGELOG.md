@@ -2,6 +2,24 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.16.0 (2026-10-31): The AI does what you say
+
+- 🗣 **Your note comes first**: Ask for 5 sets, super hard or a set rep count and the AI follows it literally.
+- 🏃 **Runs between sets**: Laps, stairs or skipping between sets show on each exercise and in the rest timer.
+- ✅ **See every request met**: A Your requests checklist shows how the plan handles each thing you asked for.
+
+**Changes**
+
+- Rewritten AI plan instructions with a clear priority order: safety, then your note, then the form choices, then defaults
+- Explicit numbers in your note (sets, reps, rounds, minutes) are followed exactly; effort words like super hard set the intensity
+- New between-sets activities (for example a stadium lap) on each exercise, counted in the rest time and shown in the rest timer
+- Your requests checklist on the built plan, with how each request was met or why it couldn't be
+- An explicit set count in your note, like 5 sets or 4x10, is guaranteed even if the AI drifts; up to 10 sets per exercise
+
+**Fixes**
+
+- The AI builder could ignore requests in your note, such as runs between sets or a specific number of sets
+
 ## 1.15.0 (2026-10-31): Anonymous usage, if you agree
 
 - 📊 **Help shape Go2FGym**: If you agree, Go2FGym sends anonymous counts of the features you use. Nothing else.

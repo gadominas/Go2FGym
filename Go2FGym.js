@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.15.0';
+const VERSION = '1.16.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -1683,9 +1683,11 @@ function webApp() {
     clearTimeout(draftT);
     draftT = setTimeout(() => send("draft", { session: S.session }), 400);
   }
-  function startRest(seconds) {
+  function startRest(seconds, activity) {
     const secs = seconds || CFG.rest;
     S.rest = { end: Date.now() + secs * 1000, total: secs, beeped: false };
+    const lbl = $("#rest .rest-label");   // a between-sets activity replaces the word "Rest"
+    if (lbl) { lbl.textContent = activity ? `🏃 ${activity}` : "Rest"; lbl.classList.toggle("act", !!activity); }
     tick();
   }
   function finish() {
@@ -2116,31 +2118,44 @@ function webApp() {
     return s ? { date: isoDay(s.start), sets: setsText(s.entries.find((en) => en.id === id).sets) } : null;
   }
 
+  // The plan prompt. Priority order matters: safety, then the user's own words, then the form, then defaults.
   const PLAN_INSTRUCTIONS = [
-    "You are a careful, practical strength coach planning one home workout.",
-    "Use ONLY exercises from the candidates list and reference each by its exact id. Never invent ids.",
-    "Fit the time budget: about 5 minutes of warm-up, then roughly 2 to 3 minutes per working set including rest.",
-    "Put big compound movements first, isolation and core last. Usually 4 to 7 exercises.",
-    "If target is 'auto', choose the muscle groups that are most due based on recent_training (longest rest, fewest sets), and balance push, pull, legs and core.",
-    "Avoid loading a group hard if it was trained in the last 48 hours unless the user asked for it.",
-    "Respect the user's note. If it mentions pain or an injury, avoid loading that area and keep everything light.",
-    "Intensity: easy = 2 sets of 12 to 15 reps, about 3 reps in reserve; moderate = 3 sets of 8 to 12, 2 reps in reserve; hard = 3 to 4 sets of 6 to 10, 1 rep in reserve.",
-    "Weights: when a candidate shows the user's last performance, keep that weight or progress by at most about 5 percent if all reps were done. With no history set weight_kg to null and tell them to pick a weight that leaves 2 to 3 reps in reserve. Bodyweight exercises have weight_kg null.",
-    "rest_seconds between 45 and 180. Each note is one short practical form cue, at most 15 words.",
-    "Write title (max 5 words), summary (one sentence on the focus and why), warmup and cooldown (one or two sentences each) in plain English. Units are kilograms.",
-  ].join(" ");
+    "You are an expert strength and conditioning coach planning ONE workout for this user.",
+    "PRIORITY ORDER, highest first: (1) safety: pain or injury in the note always wins; (2) user_note: the user's own words; (3) the form choices in request (target muscles, equipment, minutes, intensity); (4) the defaults below. A higher priority always overrides a lower one.",
+    "USER_NOTE RULES. Treat every explicit request in user_note as a hard requirement and follow it literally:",
+    "- Numbers are exact: '5 sets' means sets = 5 for every exercise unless the note limits it to some; 'reps of 8', '20 minutes', '4 rounds', '3 exercises' likewise.",
+    "- Effort words set the intensity even if the form says otherwise: 'super hard', 'brutal', 'max effort' mean the hardest level, close to failure, short rests; 'easy', 'recovery' mean light.",
+    "- Activities between sets ('run between sets', 'a lap around the stadium after each set', 'skip rope between sets', 'burpees in between') go in between_sets of EVERY exercise they apply to, written as a clear instruction with an amount, e.g. 'Run 1 lap around the stadium (about 400 m), then start the next set'. Set rest_seconds to the time that activity takes plus a short breather (a 400 m lap is about 90 to 150 s).",
+    "- Activities that are not in the candidates (running, stairs, skipping, sprints, swimming) are never exercises: put them in between_sets, warmup or cooldown. Never invent ids.",
+    "- Named styles you do not know (for example a club or community name like '7am style') are interpreted from the rest of the note: keep the note's spirit (early, intense, outdoor, minimal rest) and say how you read it in requests.",
+    "- If the requests do not fit the minutes chosen, keep the requests and use fewer exercises (at least 2), and say so in summary.",
+    "REQUESTS CHECKLIST. In requests, list every separate request found in user_note, in the user's words, and how the plan meets it (one short sentence each). Set done to false only if a request is impossible with the candidates or unsafe, and explain why in how. Empty list if there is no note.",
+    "DEFAULTS (only where user_note says nothing):",
+    "- Use ONLY exercises from candidates, referenced by exact id. Big compound movements first, isolation and core last. Usually 4 to 7 exercises.",
+    "- If target is 'auto', choose the muscle groups that are most due from recent_training and balance push, pull, legs and core. Avoid loading a group hard if it was trained in the last 48 hours unless asked.",
+    "- Intensity: easy = 2 sets of 12 to 15 reps, about 3 reps in reserve; moderate = 3 sets of 8 to 12, 2 reps in reserve; hard = 4 sets of 6 to 10, 1 rep in reserve.",
+    "- Time: about 5 minutes of warm-up, then 2 to 3 minutes per working set including rest and any between_sets activity.",
+    "- rest_seconds 45 to 180 normally; longer only to fit a between_sets activity. between_sets is an empty string when nothing is asked.",
+    "- Weights: when a candidate shows the user's last performance, keep that weight or progress by at most about 5 percent if all reps were done; for a harder effort add reps or sets rather than big jumps in weight. With no history set weight_kg to null and tell them to pick a weight that leaves the right reps in reserve. Bodyweight exercises have weight_kg null.",
+    "WRITING. note: one short practical form cue per exercise, at most 15 words. title: at most 5 words and should reflect the note's style. summary: one sentence on the focus and how the note was applied. warmup and cooldown: one or two sentences each. Plain English, kilograms.",
+  ].join("\n");
   const PLAN_SCHEMA = {
     type: "object", additionalProperties: false,
-    required: ["title", "summary", "estimated_minutes", "warmup", "cooldown", "exercises"],
+    required: ["title", "summary", "estimated_minutes", "warmup", "cooldown", "requests", "exercises"],
     properties: {
       title: { type: "string" }, summary: { type: "string" }, estimated_minutes: { type: "integer" },
       warmup: { type: "string" }, cooldown: { type: "string" },
+      requests: { type: "array", items: {
+        type: "object", additionalProperties: false, required: ["request", "how", "done"],
+        properties: { request: { type: "string" }, how: { type: "string" }, done: { type: "boolean" } },
+      } },
       exercises: { type: "array", items: {
         type: "object", additionalProperties: false,
-        required: ["id", "sets", "reps", "rest_seconds", "weight_kg", "note"],
+        required: ["id", "sets", "reps", "rest_seconds", "weight_kg", "between_sets", "note"],
         properties: {
           id: { type: "string" }, sets: { type: "integer" }, reps: { type: "integer" },
-          rest_seconds: { type: "integer" }, weight_kg: { type: ["number", "null"] }, note: { type: "string" },
+          rest_seconds: { type: "integer" }, weight_kg: { type: ["number", "null"] },
+          between_sets: { type: "string" }, note: { type: "string" },
         },
       } },
     },
@@ -2192,6 +2207,16 @@ function webApp() {
     render();
   }
 
+  // "5 sets", "5 x 10", "five sets" → 5 (only when it clearly applies to the whole workout)
+  function noteSets(note) {
+    if (!note) return null;
+    const words = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+    const m = note.toLowerCase().match(/\b(\d{1,2}|two|three|four|five|six|seven|eight|nine|ten)\s*(?:sets?\b|x\s*\d)/);
+    if (!m) return null;
+    const n = words[m[1]] || parseInt(m[1], 10);
+    return n >= 1 && n <= 10 ? n : null;
+  }
+
   async function buildPlan() {
     if (S.aiBusy) return;
     const b = S.builder;
@@ -2203,12 +2228,15 @@ function webApp() {
       return toast("No exercises match that equipment and those muscles.", true);
     }
     const now = new Date().toISOString();
+    const note = b.note.trim();
+    const wantSets = noteSets(note);
     const input = {
+      user_note: note || null,
       today: isoDay(now),
       request: {
         target: b.groups.length ? b.groups : "auto",
         equipment: b.equipment.map((q) => EQ_LABEL[q] || q),
-        minutes: b.minutes, intensity: b.intensity, note: b.note.trim() || null,
+        minutes: b.minutes, intensity: b.intensity, note: note || null,
       },
       recent_training: groupStats(14),
       last_sessions: sessionsDesc().slice(0, 5).map((s) => ({
@@ -2231,8 +2259,9 @@ function webApp() {
     const seen = new Set();
     const exercises = (res.exercises || []).filter((x) => S.byId[x.id] && !seen.has(x.id) && seen.add(x.id)).map((x) => ({
       id: x.id, name: S.byId[x.id].n,
-      sets: clamp(x.sets, 1, 6, 3), reps: clamp(x.reps, 1, 50, 10), rest: clamp(x.rest_seconds, 30, 240, CFG.rest),
+      sets: wantSets || clamp(x.sets, 1, 10, 3), reps: clamp(x.reps, 1, 100, 10), rest: clamp(x.rest_seconds, 20, 600, CFG.rest),
       w: x.weight_kg > 0 ? Math.round(x.weight_kg * 2) / 2 : null, note: String(x.note || "").slice(0, 140),
+      between: String(x.between_sets || "").trim().slice(0, 160),
     }));
     if (!exercises.length) {
       toast("The AI coach didn't return usable exercises. Try again.", true);
@@ -2243,10 +2272,20 @@ function webApp() {
       title: String(res.title || "Your workout").slice(0, 60), summary: String(res.summary || ""),
       minutes: clamp(res.estimated_minutes, 5, 180, b.minutes), warmup: String(res.warmup || ""), cooldown: String(res.cooldown || ""),
       exercises, by: res._by || "",
+      requests: (Array.isArray(res.requests) ? res.requests : []).slice(0, 8).map((r) => ({
+        request: String(r.request || "").slice(0, 120), how: String(r.how || "").slice(0, 200), done: r.done !== false,
+      })).filter((r) => r.request),
     };
+    if (wantSets) {   // the app guarantees an explicit "N sets" even if the AI drifted
+      const req = S.plan.requests.find((r) => /sets?\b/i.test(r.request));
+      if (!req) S.plan.requests.unshift({ request: `${wantSets} sets`, how: `Every exercise has ${wantSets} sets.`, done: true });
+    }
     S.trainView = "plan";
     render();
   }
+
+  // "Run 1 lap around the stadium (about 400 m), then start the next set" → "Run 1 lap around the stadium"
+  const shortActivity = (t) => String(t).split(/[,(.;]| then /i)[0].trim().slice(0, 48);
 
   function startPlan() {
     const p = S.plan;
@@ -2255,7 +2294,7 @@ function webApp() {
     S.session = {
       id: uid(), start: new Date().toISOString(), groups, title: p.title,
       entries: p.exercises.map((x) => ({
-        id: x.id, name: x.name, rest: x.rest, note: x.note,
+        id: x.id, name: x.name, rest: x.rest, note: x.note, between: x.between || "",
         sets: Array.from({ length: x.sets }, () => ({ w: x.w, r: x.reps, done: false })),
       })),
     };
@@ -2363,6 +2402,7 @@ function webApp() {
         <div class="thumb" data-id="${esc(x.id)}">${imgTag(x.id, 0)}<span>${esc(initials(x.name))}</span></div>
         <div><div class="ex-name">${esc(x.name)}</div>
         <div class="ex-meta"><b>${x.sets} × ${x.reps}${x.w ? ` at ${fmtNum(x.w)} ${UNIT}` : ""}</b>, rest ${x.rest} s</div>
+        ${x.between ? `<div class="ex-meta between">🏃 Between sets: ${esc(x.between)}</div>` : ""}
         ${x.note ? `<div class="ex-meta">${esc(x.note)}</div>` : ""}</div>
         <button class="pv-btn" data-a="preview" data-v="${esc(x.id)}" aria-label="Preview ${esc(x.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>`).join("");
     return `<header class="bar"><button class="back" data-a="b-edit">‹ Options</button>
@@ -2370,6 +2410,7 @@ function webApp() {
       <p class="kicker"><span class="badge-ai">${esc(p.by ? `✦ AI workout by ${p.by}` : "✦ AI workout")}</span></p>
       <h1 class="title">${esc(p.title)}</h1>
       <p class="lead">${esc(p.summary)}</p>
+      ${p.requests && p.requests.length ? `<div class="reqs"><p class="reqs-h">Your requests</p>${p.requests.map((r) => `<div class="req${r.done ? "" : " no"}"><span class="req-ck">${r.done ? "✓" : "!"}</span><div><b>${esc(r.request)}</b><span>${esc(r.how)}</span></div></div>`).join("")}</div>` : ""}
       <p class="muted small">About ${p.minutes} min, ${plural(p.exercises.length, "exercise")}, ${plural(total, "set")}.</p>
       ${p.warmup ? `<h2>Warm-up</h2><p>${esc(p.warmup)}</p>` : ""}
       <h2>Exercises</h2><div class="list">${rows}</div>
@@ -2831,7 +2872,8 @@ function webApp() {
         <div class="entry-head">${grip}<button class="entry-name" data-a="open" data-v="${esc(en.id)}">${esc(en.name)}</button>
         <button class="pv-btn" data-a="preview" data-v="${esc(en.id)}" aria-label="Preview ${esc(en.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
         <button class="cmp-btn" data-a="complete" data-v="${ei}" aria-label="Complete ${esc(en.name)}" title="Complete exercise"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button></div>
-        ${en.note ? `<p class="small coach-note">✨ ${esc(en.note)}${en.rest ? ` Rest ${en.rest} s.` : ""}</p>` : ""}
+        ${en.between ? `<p class="small between-note">🏃 <b>Between sets:</b> ${esc(en.between)}</p>` : ""}
+        ${en.note ? `<p class="small coach-note">✨ ${esc(en.note)}${en.rest ? ` ${en.between ? "Allow" : "Rest"} ${en.rest} s.` : ""}</p>` : ""}
         ${last ? `<p class="muted small">Last time, ${esc(day(last.date))}: ${esc(fmtSets(last.sets))}</p>` : `<p class="muted small">First time logging this one.</p>`}
         <div class="set-row head"><span>Set</span><span>${UNIT}</span><span>Reps</span><span></span><span></span></div>
         ${rows}
@@ -3406,7 +3448,7 @@ function webApp() {
         set.t = Date.now();
         en.startedAt = en.startedAt || set.t;
         S.focusId = en.id;
-        startRest(en.rest);
+        startRest(en.rest, en.between ? shortActivity(en.between) : "");
       }
       saveDraft();
       render();
@@ -3982,7 +4024,19 @@ textarea.search{resize:none;line-height:1.4}
   padding:10px 16px;border-radius:14px;background:var(--ink);color:var(--bg);z-index:19;overflow:hidden;max-width:616px;margin:0 auto}
 #rest[hidden]{display:none}
 .rest-fill{position:absolute;inset:0 auto 0 0;width:calc(var(--p,0) * 100%);background:currentColor;opacity:.13;transition:width .25s linear}
-.rest-label{font-size:calc(14px * var(--ts));opacity:.75}
+.rest-label{font-size:calc(14px * var(--ts));opacity:.75;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#rest:has(.rest-label.act){flex-wrap:wrap;row-gap:2px}
+.rest-label.act{opacity:1;font-weight:700;flex-basis:100%;order:-1;position:relative}
+.between-note{margin:2px 0 4px;padding:6px 9px;border-radius:8px;background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--ink)}
+.ex-meta.between{color:var(--ink);font-weight:600}
+.reqs{background:var(--surface);border-radius:12px;padding:10px 12px;margin:4px 0 10px}
+.reqs-h{margin:0 0 6px;font-size:calc(12px * var(--ts));font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.req{display:flex;gap:8px;padding:5px 0;border-top:1px solid var(--line)}
+.req:first-of-type{border-top:0}
+.req-ck{flex:none;width:20px;height:20px;border-radius:10px;background:var(--done);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:800;margin-top:1px}
+.req.no .req-ck{background:var(--accent)}
+.req b{display:block;font-size:calc(14px * var(--ts))}
+.req div span{display:block;font-size:calc(13px * var(--ts));color:var(--muted)}
 .rest-time{font:800 calc(28px * var(--ts))/1 var(--display);font-variant-numeric:tabular-nums;margin-right:auto;min-width:3ch}
 #rest button{font-weight:700;font-size:calc(15px * var(--ts));padding:6px 0;position:relative}
 #rest.go{background:var(--done);color:#fff}

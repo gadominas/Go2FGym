@@ -4,6 +4,38 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.16.0",
+      "date": "2026-10-31",
+      "title": "The AI does what you say",
+      "highlights": [
+        {
+          "icon": "🗣",
+          "title": "Your note comes first",
+          "text": "Ask for 5 sets, super hard or a set rep count and the AI follows it literally."
+        },
+        {
+          "icon": "🏃",
+          "title": "Runs between sets",
+          "text": "Laps, stairs or skipping between sets show on each exercise and in the rest timer."
+        },
+        {
+          "icon": "✅",
+          "title": "See every request met",
+          "text": "A Your requests checklist shows how the plan handles each thing you asked for."
+        }
+      ],
+      "changes": [
+        "Rewritten AI plan instructions with a clear priority order: safety, then your note, then the form choices, then defaults",
+        "Explicit numbers in your note (sets, reps, rounds, minutes) are followed exactly; effort words like super hard set the intensity",
+        "New between-sets activities (for example a stadium lap) on each exercise, counted in the rest time and shown in the rest timer",
+        "Your requests checklist on the built plan, with how each request was met or why it couldn't be",
+        "An explicit set count in your note, like 5 sets or 4x10, is guaranteed even if the AI drifts; up to 10 sets per exercise"
+      ],
+      "fixes": [
+        "The AI builder could ignore requests in your note, such as runs between sets or a specific number of sets"
+      ]
+    },
+    {
       "version": "1.15.0",
       "date": "2026-10-31",
       "title": "Anonymous usage, if you agree",
