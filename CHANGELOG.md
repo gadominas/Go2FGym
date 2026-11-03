@@ -2,6 +2,20 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.17.0 (2026-11-03): Hear the timer in silent mode
+
+- 🔔 **Beep in silent mode**: The rest-timer beep plays with the Ring/Silent switch on.
+- 🎚 **Your choice**: Turn it off in Settings › Workout if you'd rather keep music playing.
+- 🎵 **Music comes back**: Other apps' music can play again right after the beep.
+
+**Changes**
+
+- Settings › Workout › Beep with silent mode on (on): while a rest timer runs, Go2FGym tells iOS it's playing sound, so the beep is heard with the Ring/Silent switch on; music from other apps pauses until the beep
+
+**Fixes**
+
+- The rest-timer beep was silent with the Ring/Silent switch on
+
 ## 1.16.4 (2026-11-03): Works without iCloud
 
 - 📱 **No iCloud needed**: Go2FGym now opens on iPhones that aren't signed in to iCloud, keeping everything on the phone.

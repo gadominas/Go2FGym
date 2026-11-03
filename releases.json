@@ -4,6 +4,34 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.17.0",
+      "date": "2026-11-03",
+      "title": "Hear the timer in silent mode",
+      "highlights": [
+        {
+          "icon": "🔔",
+          "title": "Beep in silent mode",
+          "text": "The rest-timer beep plays with the Ring/Silent switch on."
+        },
+        {
+          "icon": "🎚",
+          "title": "Your choice",
+          "text": "Turn it off in Settings › Workout if you'd rather keep music playing."
+        },
+        {
+          "icon": "🎵",
+          "title": "Music comes back",
+          "text": "Other apps' music can play again right after the beep."
+        }
+      ],
+      "changes": [
+        "Settings › Workout › Beep with silent mode on (on): while a rest timer runs, Go2FGym tells iOS it's playing sound, so the beep is heard with the Ring/Silent switch on; music from other apps pauses until the beep"
+      ],
+      "fixes": [
+        "The rest-timer beep was silent with the Ring/Silent switch on"
+      ]
+    },
+    {
       "version": "1.16.4",
       "date": "2026-11-03",
       "title": "Works without iCloud",
