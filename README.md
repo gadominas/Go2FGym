@@ -126,7 +126,7 @@ On the **Workout** tab, check weight and reps and tap **✓** after each set; le
 | Add to today's workout | Tap **+** in the list, or **Add to workout** on the exercise |
 | Add more during a workout | **＋ Add exercises** at the top of the Workout tab, tap **+**, then **✓ Workout** at the top to go back |
 | Change the order of exercises | Drag the **⠿** handle, or tap **↑ Up next** on the one you want to do next |
-| Finish an exercise | The round green **✓** in its top-right corner |
+| Finish an exercise | The round green **✓** at the bottom right of its card |
 | Check a finished exercise | Tap its one-line summary to see the sets; **↺ Resume** to keep working on it |
 | Quickly see how an exercise is done | Tap the **eye** next to it in your workout or a built plan; **Open exercise** for the full page |
 | Log a set | Check weight and reps, then tap **✓**. Leave weight empty for bodyweight. |

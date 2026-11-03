@@ -2,6 +2,14 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.16.1 (2026-11-02): Complete where your thumb is
+
+- ✅ **Complete at the bottom right**: The round green check now sits at the bottom right of each exercise, next to Remove.
+
+**Changes**
+
+- The Complete button moved from the top-right corner of an exercise card to the bottom-right, after Add set and Remove
+
 ## 1.16.0 (2026-10-31): The AI does what you say
 
 - 🗣 **Your note comes first**: Ask for 5 sets, super hard or a set rep count and the AI follows it literally.

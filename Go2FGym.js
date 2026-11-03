@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.16.0';
+const VERSION = '1.16.1';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -2870,8 +2870,7 @@ function webApp() {
       return `<section class="entry${focus ? " focus" : ""}${started ? " active" : ""}" data-ei="${ei}">
         <p class="entry-status">${statusText(en)}</p>
         <div class="entry-head">${grip}<button class="entry-name" data-a="open" data-v="${esc(en.id)}">${esc(en.name)}</button>
-        <button class="pv-btn" data-a="preview" data-v="${esc(en.id)}" aria-label="Preview ${esc(en.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
-        <button class="cmp-btn" data-a="complete" data-v="${ei}" aria-label="Complete ${esc(en.name)}" title="Complete exercise"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button></div>
+        <button class="pv-btn" data-a="preview" data-v="${esc(en.id)}" aria-label="Preview ${esc(en.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
         ${en.between ? `<p class="small between-note">🏃 <b>Between sets:</b> ${esc(en.between)}</p>` : ""}
         ${en.note ? `<p class="small coach-note">✨ ${esc(en.note)}${en.rest ? ` ${en.between ? "Allow" : "Rest"} ${en.rest} s.` : ""}</p>` : ""}
         ${last ? `<p class="muted small">Last time, ${esc(day(last.date))}: ${esc(fmtSets(last.sets))}</p>` : `<p class="muted small">First time logging this one.</p>`}
@@ -2879,7 +2878,8 @@ function webApp() {
         ${rows}
         <div class="entry-actions"><button class="link" data-a="add-set" data-v="${ei}">Add set</button>
           ${nextIdx !== ei && !started ? `<button class="chip" data-a="up-next" data-v="${ei}">↑ Up next</button>` : ""}
-          <button class="link small danger${S.armed === "rm" + ei ? " armed" : ""}" data-a="rm-entry" data-v="${ei}">${S.armed === "rm" + ei ? "Tap to remove" : "Remove"}</button></div></section>`;
+          <button class="link small danger${S.armed === "rm" + ei ? " armed" : ""}" data-a="rm-entry" data-v="${ei}">${S.armed === "rm" + ei ? "Tap to remove" : "Remove"}</button>
+          <button class="cmp-btn" data-a="complete" data-v="${ei}" aria-label="Complete ${esc(en.name)}" title="Complete exercise"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button></div></section>`;
     }).join("");
     return `<header class="bar wbar"><h1 class="title">${esc(s.title || "Workout")}</h1><button class="hbtn" data-a="add-ex">＋ Add exercises</button>
         <div class="wstats" id="wstats" aria-live="off">${wstatsInner(s)}</div></header>
@@ -3785,8 +3785,9 @@ p{margin:0 0 10px}
 body.is-dragging{-webkit-user-select:none;user-select:none}
 .entry.focus{box-shadow:0 0 0 2px var(--accent)}
 .entry-status{margin:0 0 2px;font-size:calc(12px * var(--ts));font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:.05em}
-.entry-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0 8px}
-.entry-actions .link{margin-right:auto}
+.entry-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:16px 0 10px}
+.entry-actions .link:first-child{margin-right:auto}
+.entry-actions .cmp-btn{margin-left:6px}
 .cmp-btn{flex:none;width:40px;height:40px;border-radius:20px;border:2px solid var(--done);color:var(--done);display:grid;place-items:center;background:transparent}
 .cmp-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
 .entry.active .cmp-btn{background:color-mix(in srgb,var(--done) 16%,transparent)}

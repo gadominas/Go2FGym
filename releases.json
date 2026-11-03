@@ -4,6 +4,22 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.16.1",
+      "date": "2026-11-02",
+      "title": "Complete where your thumb is",
+      "highlights": [
+        {
+          "icon": "✅",
+          "title": "Complete at the bottom right",
+          "text": "The round green check now sits at the bottom right of each exercise, next to Remove."
+        }
+      ],
+      "changes": [
+        "The Complete button moved from the top-right corner of an exercise card to the bottom-right, after Add set and Remove"
+      ],
+      "fixes": []
+    },
+    {
       "version": "1.16.0",
       "date": "2026-10-31",
       "title": "The AI does what you say",
