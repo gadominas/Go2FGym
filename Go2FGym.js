@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.16.3';
+const VERSION = '1.16.4';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -94,7 +94,11 @@ for (const d of [ROOT, IMG]) if (!fm.fileExists(d)) fm.createDirectory(d, true);
 
 // ---------------------------------------------------------------- settings (app-blueprints · settings)
 // Choices live in settings.json in iCloud Drive › Scriptable › Go2FGym; workouts and the library stay where they are.
-const sfm = (() => { try { return FileManager.iCloud(); } catch (e) { return FileManager.local(); } })();
+// iCloud is only touched when this script itself lives in iCloud Drive. On a phone that isn't signed in to iCloud,
+// the iCloud file manager ends the script with "iCloud is not supported", and try/catch can't stop that.
+const ICLOUD_OK = (() => { try { return /\/Mobile Documents\//.test(module.filename); } catch (e) { return false; } })();
+const icloudFm = () => (ICLOUD_OK ? FileManager.iCloud() : null);
+const sfm = icloudFm() || FileManager.local();
 const SET_DIR = sfm.joinPath(sfm.documentsDirectory(), "Go2FGym");
 const SP = (n) => sfm.joinPath(SET_DIR, n + ".json");
 // A short start-up log on the phone (local, not iCloud): Settings › Updates › Start-up log, and on screen if opening stalls.
@@ -352,7 +356,8 @@ function imgPath(rel) {
 
 function icloudDir() {
   try {
-    const ic = FileManager.iCloud();
+    const ic = icloudFm();
+    if (!ic) return null;
     const dir = ic.joinPath(ic.documentsDirectory(), "Go2FGym-backup");
     if (!ic.fileExists(dir)) ic.createDirectory(dir, true);
     return { ic, dir };
@@ -657,8 +662,8 @@ async function applyUpdate(info) {
   const path = module.filename;
   let target = FileManager.local();
   try {
-    const ic = FileManager.iCloud();
-    if (path.startsWith(ic.documentsDirectory())) target = ic;
+    const ic = icloudFm();
+    if (ic && path.startsWith(ic.documentsDirectory())) target = ic;
   } catch (e) {
     /* iCloud off */
   }

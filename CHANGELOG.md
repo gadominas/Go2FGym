@@ -2,6 +2,18 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.16.4 (2026-11-03): Works without iCloud
+
+- 📱 **No iCloud needed**: Go2FGym now opens on iPhones that aren't signed in to iCloud, keeping everything on the phone.
+
+**Changes**
+
+- Settings and backups use iCloud Drive only when Scriptable keeps your scripts there; otherwise they stay on the phone
+
+**Fixes**
+
+- On an iPhone not signed in to iCloud, opening or installing Go2FGym failed with “iCloud is not supported”
+
 ## 1.16.3 (2026-11-02): Round buttons for every action
 
 - ⭕ **Matching round buttons**: Remove, Add set, Up next and Complete are now round buttons with a small label.

@@ -29,10 +29,14 @@ async function say(title, message, openLabel) {
 function scriptsFolder() {
   const here = module.filename;
   const dir = here.slice(0, here.lastIndexOf("/"));
-  try {
-    const icloud = FileManager.iCloud();
-    if (icloud.fileExists(here)) return { fm: icloud, dir };
-  } catch (_) {}
+  // Only touch iCloud when this script lives in iCloud Drive: on a phone that isn't signed in to iCloud,
+  // the iCloud file manager ends the script ("iCloud is not supported") and try/catch can't stop it.
+  if (/\/Mobile Documents\//.test(here)) {
+    try {
+      const icloud = FileManager.iCloud();
+      if (icloud.fileExists(here)) return { fm: icloud, dir };
+    } catch (_) {}
+  }
   return { fm: FileManager.local(), dir };
 }
 
