@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.16.2';
+const VERSION = '1.16.3';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -2877,10 +2877,10 @@ function webApp() {
         <div class="set-row head"><span>Set</span><span>${UNIT}</span><span>Reps</span><span></span><span></span></div>
         ${rows}
         <div class="entry-actions">
-          <button class="link small danger ea-left${S.armed === "rm" + ei ? " armed" : ""}" data-a="rm-entry" data-v="${ei}">${S.armed === "rm" + ei ? "Tap to remove" : "Remove"}</button>
-          <div class="ea-mid"><button class="link" data-a="add-set" data-v="${ei}">Add set</button>
-          ${nextIdx !== ei && !started ? `<button class="chip" data-a="up-next" data-v="${ei}">↑ Up next</button>` : ""}</div>
-          <button class="cmp-btn" data-a="complete" data-v="${ei}" aria-label="Complete ${esc(en.name)}" title="Complete exercise"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button></div></section>`;
+          <button class="ea-btn ea-rm ea-left${S.armed === "rm" + ei ? " armed" : ""}" data-a="rm-entry" data-v="${ei}" aria-label="${S.armed === "rm" + ei ? "Tap again to remove" : "Remove"} ${esc(en.name)}"><span class="ea-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9L17.5 7M10 11v5.5M14 11v5.5"/></svg></span><span class="ea-t">${S.armed === "rm" + ei ? "Tap again" : "Remove"}</span></button>
+          <div class="ea-mid"><button class="ea-btn ea-add" data-a="add-set" data-v="${ei}" aria-label="Add a set to ${esc(en.name)}"><span class="ea-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><span class="ea-t">Add set</span></button>
+          ${nextIdx !== ei && !started ? `<button class="ea-btn ea-up" data-a="up-next" data-v="${ei}" aria-label="Do ${esc(en.name)} next"><span class="ea-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></span><span class="ea-t">Up next</span></button>` : ""}</div>
+          <button class="ea-btn ea-done cmp-btn" data-a="complete" data-v="${ei}" aria-label="Complete ${esc(en.name)}" title="Complete exercise"><span class="ea-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span class="ea-t">Complete</span></button></div></section>`;
     }).join("");
     return `<header class="bar wbar"><h1 class="title">${esc(s.title || "Workout")}</h1><button class="hbtn" data-a="add-ex">＋ Add exercises</button>
         <div class="wstats" id="wstats" aria-live="off">${wstatsInner(s)}</div></header>
@@ -3787,12 +3787,23 @@ body.is-dragging{-webkit-user-select:none;user-select:none}
 .entry.focus{box-shadow:0 0 0 2px var(--accent)}
 .entry-status{margin:0 0 2px;font-size:calc(12px * var(--ts));font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:.05em}
 .entry-actions{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:16px 0 10px}
-.entry-actions .ea-left{justify-self:start;text-align:left}
-.ea-mid{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
-.entry-actions .cmp-btn{justify-self:end}
-.cmp-btn{flex:none;width:40px;height:40px;border-radius:20px;border:2px solid var(--done);color:var(--done);display:grid;place-items:center;background:transparent}
-.cmp-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
-.entry.active .cmp-btn{background:color-mix(in srgb,var(--done) 16%,transparent)}
+.entry-actions .ea-left{justify-self:start}
+.ea-mid{display:flex;align-items:flex-start;justify-content:center;gap:14px}
+.entry-actions .ea-done{justify-self:end}
+.ea-btn{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:56px;background:none;padding:0;color:var(--ink)}
+.ea-ic{width:40px;height:40px;border-radius:20px;border:2px solid currentColor;display:grid;place-items:center;transition:background .15s ease,color .15s ease}
+.ea-ic svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.ea-t{font-size:calc(11px * var(--ts));font-weight:600;line-height:1;white-space:nowrap;color:var(--muted)}
+.ea-rm{color:var(--muted)}
+.ea-rm.armed{color:var(--accent)!important;text-decoration:none}
+.ea-rm.armed .ea-ic{background:var(--accent);border-color:var(--accent);color:#fff}
+.ea-rm.armed .ea-t{color:var(--accent)}
+.ea-add{color:var(--accent)}
+.ea-up{color:var(--ink)}
+.ea-done{color:var(--done)}
+.ea-done .ea-t{color:var(--done)}
+.entry.active .ea-done .ea-ic{background:color-mix(in srgb,var(--done) 16%,transparent)}
+.cmp-btn{flex:none}
 .entry-status:empty{display:none}
 .entry.active:not(.focus){box-shadow:0 0 0 1.5px color-mix(in srgb,var(--accent) 45%,transparent)}
 .done-line{display:flex;align-items:center;gap:4px}

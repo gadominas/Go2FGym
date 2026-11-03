@@ -4,6 +4,23 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.16.3",
+      "date": "2026-11-02",
+      "title": "Round buttons for every action",
+      "highlights": [
+        {
+          "icon": "⭕",
+          "title": "Matching round buttons",
+          "text": "Remove, Add set, Up next and Complete are now round buttons with a small label."
+        }
+      ],
+      "changes": [
+        "The exercise card's bottom row uses round icon buttons with labels: Remove (left), Add set and Up next (middle), Complete (right)",
+        "Remove turns red and asks to tap again before removing"
+      ],
+      "fixes": []
+    },
+    {
       "version": "1.16.2",
       "date": "2026-11-02",
       "title": "Tidier exercise buttons",

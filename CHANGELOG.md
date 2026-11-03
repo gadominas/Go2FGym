@@ -2,6 +2,15 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.16.3 (2026-11-02): Round buttons for every action
+
+- ⭕ **Matching round buttons**: Remove, Add set, Up next and Complete are now round buttons with a small label.
+
+**Changes**
+
+- The exercise card's bottom row uses round icon buttons with labels: Remove (left), Add set and Up next (middle), Complete (right)
+- Remove turns red and asks to tap again before removing
+
 ## 1.16.2 (2026-11-02): Tidier exercise buttons
 
 - 👍 **Buttons where you expect them**: Remove on the left, Add set in the middle, Complete on the right of every exercise.
