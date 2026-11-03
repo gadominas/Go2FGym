@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.16.4';
+const VERSION = '1.17.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -68,11 +68,12 @@ const KC_INSTALL = 'go2fgym-install-id';
 const BLUEPRINTS_REPO = 'https://github.com/gadominas/app-blueprints';
 const BLUEPRINTS = [
   { id: 'in-app-updates', name: 'In-app updates', version: '1.0.0', since: '1.7.0' },
-  { id: 'settings', name: 'Settings', version: '1.1.0', since: '1.14.0' },
+  { id: 'settings', name: 'Settings', version: '1.1.1', since: '1.17.0' },
   { id: 'ai-configuration', name: 'AI configuration', version: '1.0.0', since: '1.6.0' },
   { id: 'launch-screen', name: 'Launch screen', version: '1.0.0', since: '1.11.0' },
   { id: 'widgets', name: 'Widgets', version: '1.0.0', since: '1.12.0' },
   { id: 'ai-invitation', name: 'AI invitation', version: '1.2.1', since: '1.13.0' },
+  { id: 'audio-playback', name: 'Sound in silent mode', version: '1.0.0', since: '1.17.0' },
   { id: 'usage-analytics', name: 'Anonymous usage analytics', version: '1.1.0', since: '1.15.0' },
 ];
 
@@ -159,6 +160,7 @@ const settings = {
   strongman: false, olympic: false,   // exercise types that need a platform, coach or special gear
   icloudBackup: true,   // mirror history.json to iCloud Drive/Scriptable/Go2FGym-backup
   checkUpdates: true,   // offer new versions from GitHub (asks again 2 days after "Later")
+  silentBeep: true,     // rest-timer beep with the Ring/Silent switch on (audio-playback); pauses other music while a timer runs
   shareUsage: false, usageAsked: false,  // anonymous usage counts: off until the person agrees
   stravaMode: "funny",  // default tone for Strava posts
   cfg: {},
@@ -223,7 +225,7 @@ const SET_KEYS = {
   font: [(v) => ["sans", "serif"].includes(v), ""], textSize: [(v) => [0.92, 1, 1.12, 1.25].includes(+v), ""],
   unit: [(v) => ["kg", "lb"].includes(v), "reload"],
   strongman: ["bool", "library"], olympic: ["bool", "library"],
-  icloudBackup: ["bool", ""], checkUpdates: ["bool", ""], shareUsage: ["bool", ""],
+  icloudBackup: ["bool", ""], checkUpdates: ["bool", ""], shareUsage: ["bool", ""], silentBeep: ["bool", ""],
   stravaMode: [(v) => ["serious", "funny", "neutral"].includes(v), ""],
 };
 // Returns the effect ('', 'library' or 'reload'), or null when the key or value isn't allowed.
@@ -1174,7 +1176,7 @@ function clientState() {
     consent,
     version: VERSION,
     look: lookState(),
-    cfg: { unit: settings.unit, rest: cfg("restSeconds"), equipment: settings.equipment, disclaimerVersion: DISCLAIMER_VERSION },
+    cfg: { unit: settings.unit, rest: cfg("restSeconds"), equipment: settings.equipment, disclaimerVersion: DISCLAIMER_VERSION, silentBeep: settings.silentBeep !== false },
     usageAsk: usageAvailable() && !settings.usageAsked && !settings.shareUsage,
   };
 }
@@ -1619,6 +1621,36 @@ function webApp() {
     });
   }
 
+  // ── Sound with the Ring/Silent switch on (app-blueprints · audio-playback 1.0.0) ──
+  // iOS mutes a page's sound while the switch is on, unless the page plays media. While the app is making sound
+  // the user asked for, it declares itself a media player (navigator.audioSession, iOS 17+); for speech and
+  // Web Audio a looping second of silence does the same on older iOS. Start inside a tap; stop with the sound.
+  const silentWav = secs => {   // silence as an 8 kHz WAV data URI
+    const n = Math.round(8000 * secs), buf = new Uint8Array(44 + n), dv = new DataView(buf.buffer);
+    const w = (o, t) => { for (let i = 0; i < t.length; i++) buf[o + i] = t.charCodeAt(i); };
+    w(0, "RIFF"); dv.setUint32(4, 36 + n, true); w(8, "WAVE"); w(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, 8000, true); dv.setUint32(28, 8000, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true); w(36, "data"); dv.setUint32(40, n, true); buf.fill(128, 44);
+    let str = ""; buf.forEach(b => { str += String.fromCharCode(b); }); return "data:audio/wav;base64," + btoa(str);
+  };
+  const keepAwake = new Audio(); keepAwake.loop = true; keepAwake.setAttribute("playsinline", "");
+  let keepSrc = "", audioOffT = null;
+  // kind: "speech" (Web Speech), "webaudio" (an AudioContext), "media" (the sound is an <audio> element itself:
+  // iOS plays one media element at a time, so no silence loop next to it)
+  function audioOn(kind) {
+    clearTimeout(audioOffT);
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+    if (kind === "media") return;
+    try { if (!keepSrc) keepAwake.src = keepSrc = silentWav(1); const p = keepAwake.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+  }
+  function audioOff() {   // other apps' music can play again
+    clearTimeout(audioOffT);
+    try { keepAwake.pause(); } catch (e) {}
+    try { if (navigator.audioSession) navigator.audioSession.type = "auto"; } catch (e) {}
+  }
+  function audioOffSoon(ms) { clearTimeout(audioOffT); audioOffT = setTimeout(audioOff, ms); }   // sounds that come and go (games, timers)
+  let restSound = false;   // a media session is on for the rest timer
+  const silentBeepOn = () => CFG.silentBeep !== false;
+
   // ------------------------------------------------ history helpers
   const sessionsDesc = () => [...S.history.sessions].sort((a, b) => b.start.localeCompare(a.start));
   function lastSets(id) {
@@ -1691,6 +1723,7 @@ function webApp() {
   function startRest(seconds, activity) {
     const secs = seconds || CFG.rest;
     S.rest = { end: Date.now() + secs * 1000, total: secs, beeped: false };
+    if (silentBeepOn()) { audioOn("webaudio"); restSound = true; }   // started from a tap: the beep will play in silent mode
     const lbl = $("#rest .rest-label");   // a between-sets activity replaces the word "Rest"
     if (lbl) { lbl.textContent = activity ? `🏃 ${activity}` : "Rest"; lbl.classList.toggle("act", !!activity); }
     tick();
@@ -2012,6 +2045,7 @@ function webApp() {
       <h3 class="sec">Appearance</h3>${lookHTML()}
       <h3 class="sec">Workout</h3>
       <div class="lk-row"><span class="lk-l">Weight unit</span>${segRow("unit", [["kg", "kg"], ["lb", "lb"]], s.unit, "set")}<small class="muted">The app redraws in this unit when you close Settings</small></div>
+      ${swRow("silentBeep", "Beep with silent mode on", "Plays the rest-timer beep with the Ring/Silent switch on. Music from other apps pauses while a timer runs.", s.silentBeep !== false)}
       <h3 class="sec">Library</h3>
       <p class="hint">Equipment you own. Exercises for it appear in the library.</p>
       ${SET.equipmentAll.map((q) => swRow(q, EQ_NAMES[q] || q, "", s.equipment.includes(q), "equip")).join("")}
@@ -2050,7 +2084,7 @@ function webApp() {
     if (act === "cfgclose") return closeSettings();
     if (act === "look") { const val = k === "textSize" ? +v : v; LOOK[k] = val; applyLook(); renderCfg(); return send("set", { k, v: val }); }
     if (act === "set") { SET.settings[k] = v; renderCfg(); return send("set", { k, v }); }
-    if (act === "toggle") { SET.settings[v] = !SET.settings[v]; if (v === "strongman" || v === "olympic") libDirty = true; renderCfg(); return send("set", { k: v, v: SET.settings[v] }); }
+    if (act === "toggle") { SET.settings[v] = !SET.settings[v]; if (v === "strongman" || v === "olympic") libDirty = true; if (v === "silentBeep") CFG.silentBeep = SET.settings[v]; renderCfg(); return send("set", { k: v, v: SET.settings[v] }); }
     if (act === "equip") { libDirty = true; return send("equip", { v }); }
     if (act === "cfgreset") return send("cfg", { k, reset: 1 });
     if (act === "cfgstep") { const d = cfgItem(k), step = d.step || 1; SET.cfg[k] = Number(Math.min(d.max, Math.max(d.min, Number(SET.cfg[k]) + step * +v)).toFixed(2)); renderCfg(); return send("cfg", { k, v: SET.cfg[k] }); }
@@ -3337,13 +3371,17 @@ function webApp() {
         if (!S.rest.beeped) {
           S.rest.beeped = true;
           beep();
+          if (restSound) { restSound = false; audioOffSoon(2000); }   // after the beep, other music can play again
           el.classList.add("go");
           el.querySelector(".rest-time").textContent = "Go";
           el.style.setProperty("--p", "1");
         }
         if (now - S.rest.end > 4000) S.rest.end = 0;
       }
-    } else el.hidden = true;
+    } else {
+      el.hidden = true;
+      if (restSound) { restSound = false; audioOff(); }   // skipped, finished or discarded before the beep
+    }
     const e2 = $("#elapsed");
     if (e2 && S.session) e2.textContent = elapsed(S.session.start);
     const wc = $("#wclock");
@@ -3494,6 +3532,7 @@ function webApp() {
     "rest-add": () => {
       const base = Math.max(S.rest.end, Date.now());
       S.rest = { end: base + 30000, total: Math.max(S.rest.total, Math.ceil((base + 30000 - Date.now()) / 1000)), beeped: false };
+      if (silentBeepOn()) { audioOn("webaudio"); restSound = true; }
       tick();
     },
     "rest-skip": () => { S.rest.end = 0; tick(); },
@@ -3619,6 +3658,7 @@ function webApp() {
     onSettings(st) {   // fresh Settings state from the Scriptable side
       SET = st;
       CFG.rest = st.cfg.restSeconds;
+      CFG.silentBeep = st.settings.silentBeep !== false;
       S.ai.stravaMode = st.settings.stravaMode;
       renderCfg();
     },
