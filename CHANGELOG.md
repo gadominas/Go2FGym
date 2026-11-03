@@ -2,6 +2,14 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.16.2 (2026-11-02): Tidier exercise buttons
+
+- 👍 **Buttons where you expect them**: Remove on the left, Add set in the middle, Complete on the right of every exercise.
+
+**Changes**
+
+- The bottom row of each exercise is now Remove (left), Add set and Up next (middle), Complete (right)
+
 ## 1.16.1 (2026-11-02): Complete where your thumb is
 
 - ✅ **Complete at the bottom right**: The round green check now sits at the bottom right of each exercise, next to Remove.

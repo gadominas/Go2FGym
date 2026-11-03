@@ -4,6 +4,22 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.16.2",
+      "date": "2026-11-02",
+      "title": "Tidier exercise buttons",
+      "highlights": [
+        {
+          "icon": "👍",
+          "title": "Buttons where you expect them",
+          "text": "Remove on the left, Add set in the middle, Complete on the right of every exercise."
+        }
+      ],
+      "changes": [
+        "The bottom row of each exercise is now Remove (left), Add set and Up next (middle), Complete (right)"
+      ],
+      "fixes": []
+    },
+    {
       "version": "1.16.1",
       "date": "2026-11-02",
       "title": "Complete where your thumb is",
