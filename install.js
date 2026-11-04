@@ -29,8 +29,8 @@ async function say(title, message, openLabel) {
 function scriptsFolder() {
   const here = module.filename;
   const dir = here.slice(0, here.lastIndexOf("/"));
-  // Only touch iCloud when this script lives in iCloud Drive: on a phone that isn't signed in to iCloud,
-  // the iCloud file manager ends the script ("iCloud is not supported") and try/catch can't stop it.
+  // Only touch iCloud when this script lives in iCloud Drive (stability-patterns): on a phone that isn't signed in
+  // to iCloud, the iCloud file manager ends the script ("iCloud is not supported") and a try/catch can't stop it.
   if (/\/Mobile Documents\//.test(here)) {
     try {
       const icloud = FileManager.iCloud();

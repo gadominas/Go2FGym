@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.17.0';
+const VERSION = '1.17.1';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -67,8 +67,9 @@ const KC_INSTALL = 'go2fgym-install-id';
 // inventory tools read it without running the script, and Settings › Built with shows it.
 const BLUEPRINTS_REPO = 'https://github.com/gadominas/app-blueprints';
 const BLUEPRINTS = [
-  { id: 'in-app-updates', name: 'In-app updates', version: '1.0.0', since: '1.7.0' },
-  { id: 'settings', name: 'Settings', version: '1.1.1', since: '1.17.0' },
+  { id: 'stability-patterns', name: 'Stability patterns', version: '1.0.0', since: '1.17.1' },
+  { id: 'in-app-updates', name: 'In-app updates', version: '1.0.1', since: '1.17.1' },
+  { id: 'settings', name: 'Settings', version: '1.1.2', since: '1.17.1' },
   { id: 'ai-configuration', name: 'AI configuration', version: '1.0.0', since: '1.6.0' },
   { id: 'launch-screen', name: 'Launch screen', version: '1.0.0', since: '1.11.0' },
   { id: 'widgets', name: 'Widgets', version: '1.0.0', since: '1.12.0' },
@@ -312,6 +313,7 @@ function settingsState() {
   return {
     settings: Object.assign(Object.fromEntries(Object.keys(SET_KEYS).map((k) => [k, settings[k]])), { equipment: settings.equipment }),
     equipmentAll: EQUIPMENT,
+    icloudOk: !!icloudFm(),   // stability-patterns: iCloud-only features say so without iCloud
     cfg: Object.fromEntries(CFG_FLAT.map((d) => [d.k, cfg(d.k)])),
     cfgSchema: CONFIG.map(([title, items]) => ({ title, items })),
     palettes: PALETTES, version: VERSION, appName: "Go2FGym",
@@ -2053,7 +2055,7 @@ function webApp() {
       ${swRow("olympic", "Olympic weightlifting", "Need a platform and a coach", s.olympic)}
       ${libDirty ? `<div class="srow"><div class="grow"><b>Download photos for new equipment</b><small>The library updates when you close Settings; photos need a download</small></div><button class="sm" data-act="sync">Update library</button></div>` : ""}
       <h3 class="sec">History</h3>
-      ${swRow("icloudBackup", "Back up history to iCloud Drive", "iCloud Drive › Scriptable › Go2FGym-backup", s.icloudBackup)}
+      ${swRow("icloudBackup", "Back up history to iCloud Drive", SET.icloudOk === false ? "Needs iCloud Drive: this iPhone isn't signed in to iCloud, so history stays on the phone" : "iCloud Drive › Scriptable › Go2FGym-backup", s.icloudBackup)}
       <h3 class="sec">AI coach</h3>
       <div class="srow"><div class="grow"><b>Keys, models and token usage</b><small id="s-aistatus">${esc(SET.hasKey ? SET.aiStatus : "Add a Claude or OpenAI key for the AI coach")}</small></div><button class="sm" data-act="ai-open">AI settings</button></div>
       <div class="lk-row"><span class="lk-l">Default Strava post tone</span>${segRow("stravaMode", [["serious", "Serious"], ["funny", "Funny"], ["neutral", "Neutral"]], s.stravaMode, "set")}</div>
