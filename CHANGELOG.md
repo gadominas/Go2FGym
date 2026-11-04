@@ -2,6 +2,21 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.17.1 (2026-11-04): Opens on any iPhone
+
+- 📱 **Opens on any iPhone**: Go2FGym opens on iPhones that aren't signed in to iCloud, every time.
+- 📥 **Installs on new phones**: The installer works on a brand-new iPhone without iCloud too.
+- 🛡 **Updates safely**: Updating can no longer stop on a phone without iCloud.
+
+**Changes**
+
+- iCloud is used only when Scriptable keeps its scripts in iCloud Drive; otherwise everything stays on the phone
+- Settings › Built with lists Stability patterns 1.0.0, Settings 1.1.2 and In-app updates 1.0.1
+
+**Fixes**
+
+- On an iPhone not signed in to iCloud, Go2FGym or its installer could still stop with "iCloud is not supported"
+
 ## 1.17.0 (2026-11-03): Hear the timer in silent mode
 
 - 🔔 **Beep in silent mode**: The rest-timer beep plays with the Ring/Silent switch on.
