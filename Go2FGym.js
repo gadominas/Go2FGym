@@ -46,12 +46,14 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.17.1';
+const VERSION = '1.17.2';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
 const UPDATE_SNOOZE_MS = 2 * 24 * 3600 * 1000;   // "Later" = 2 days
 const KC_UPDATE_SNOOZE = 'go2fgym-update-snooze';   // Keychain key, unique per app
+// In a native shell (BuildIt) new versions come from the App Store or TestFlight, never from GitHub (Step 8).
+const NATIVE_SHELL = (() => { try { return config.runsInNativeShell === true; } catch (e) { return false; } })();
 
 // ── Anonymous usage counts (opt-in), sent to PostHog (app-blueprints · usage-analytics) ──
 // Nothing is sent until KEY is filled in AND the person agrees. Each event carries a random install ID
@@ -67,14 +69,14 @@ const KC_INSTALL = 'go2fgym-install-id';
 // inventory tools read it without running the script, and Settings › Built with shows it.
 const BLUEPRINTS_REPO = 'https://github.com/gadominas/app-blueprints';
 const BLUEPRINTS = [
-  { id: 'stability-patterns', name: 'Stability patterns', version: '1.0.0', since: '1.17.1' },
-  { id: 'in-app-updates', name: 'In-app updates', version: '1.0.1', since: '1.17.1' },
+  { id: 'stability-patterns', name: 'Stability patterns', version: '1.0.1', since: '1.17.2' },
+  { id: 'in-app-updates', name: 'In-app updates', version: '1.1.0', since: '1.17.2' },
   { id: 'settings', name: 'Settings', version: '1.1.2', since: '1.17.1' },
-  { id: 'ai-configuration', name: 'AI configuration', version: '1.0.0', since: '1.6.0' },
-  { id: 'launch-screen', name: 'Launch screen', version: '1.0.0', since: '1.11.0' },
-  { id: 'widgets', name: 'Widgets', version: '1.0.0', since: '1.12.0' },
+  { id: 'ai-configuration', name: 'AI configuration', version: '1.0.1', since: '1.17.2' },
+  { id: 'launch-screen', name: 'Launch screen', version: '1.0.1', since: '1.17.2' },
+  { id: 'widgets', name: 'Widgets', version: '1.1.1', since: '1.17.2' },
   { id: 'ai-invitation', name: 'AI invitation', version: '1.2.1', since: '1.13.0' },
-  { id: 'audio-playback', name: 'Sound in silent mode', version: '1.0.0', since: '1.17.0' },
+  { id: 'audio-playback', name: 'Sound in silent mode', version: '1.0.1', since: '1.17.2' },
   { id: 'usage-analytics', name: 'Anonymous usage analytics', version: '1.1.0', since: '1.15.0' },
 ];
 
@@ -316,7 +318,7 @@ function settingsState() {
     icloudOk: !!icloudFm(),   // stability-patterns: iCloud-only features say so without iCloud
     cfg: Object.fromEntries(CFG_FLAT.map((d) => [d.k, cfg(d.k)])),
     cfgSchema: CONFIG.map(([title, items]) => ({ title, items })),
-    palettes: PALETTES, version: VERSION, appName: "Go2FGym",
+    palettes: PALETTES, version: VERSION, nativeShell: NATIVE_SHELL, appName: "Go2FGym",
     blueprints: BLUEPRINTS, blueprintsRepo: BLUEPRINTS_REPO,
     hasKey: !!aiKey(), aiStatus: aiStatusLine(),
     usageAvailable: usageAvailable(), usageStatus: usageStatus(),
@@ -623,6 +625,7 @@ function clearUpdateSnooze() {
 
 // Never throws and never blocks: any failure just means no update is offered this time.
 async function checkForUpdate() {
+  if (NATIVE_SHELL) return null;   // Step 8: updates come through the App Store
   if (!settings.checkUpdates || updateSnoozed()) return null;
   try {
     const req = new Request(`${REPO_RAW}releases.json?t=${Date.now()}`);
@@ -649,6 +652,7 @@ async function checkForUpdate() {
 }
 
 async function applyUpdate(info) {
+  if (NATIVE_SHELL) throw new Error('This app is updated through the App Store.');   // Step 8: never download code
   const req = new Request(`${REPO_RAW}${encodeURI((info && info.script) || SCRIPT_FILE)}?t=${Date.now()}`);
   req.timeoutInterval = 30;
   const code = await req.loadString();
@@ -2063,8 +2067,10 @@ function webApp() {
       ${swRow("shareUsage", "Share anonymous usage", "Counts like app opens, workouts finished and AI plans made, with a random install ID. Never your exercises, weights, notes or Strava account. Off removes the ID.", s.shareUsage)}
       <div class="srow"><div class="grow"><b>Test the connection</b><small id="usagemsg" class="muted" aria-live="polite">${esc(SET.usageStatus || "Sends one test event now and shows PostHog’s answer.")}</small></div><button class="sm" data-act="usage-test">Send test</button></div>` : ""}
       <h3 class="sec">Updates</h3>
-      ${swRow("checkUpdates", "Offer new versions", `You have Go2FGym ${SET.version}. “Later” waits two days.`, s.checkUpdates)}
-      <div class="srow"><div class="grow"><b>Check for updates now</b><small id="updmsg" class="muted" aria-live="polite"></small></div><button class="sm" data-act="updcheck">Check</button></div>
+      ${SET.nativeShell
+        ? `<div class="srow"><div class="grow"><b>Updates</b><small class="muted">You have Go2FGym ${esc(SET.version)}. New versions come through the App Store (or TestFlight).</small></div></div>`
+        : `${swRow("checkUpdates", "Offer new versions", `You have Go2FGym ${SET.version}. “Later” waits two days.`, s.checkUpdates)}
+      <div class="srow"><div class="grow"><b>Check for updates now</b><small id="updmsg" class="muted" aria-live="polite"></small></div><button class="sm" data-act="updcheck">Check</button></div>`}
       <div class="srow"><div class="grow"><b>Start-up log</b><small class="muted">What happened the last times Go2FGym opened</small></div><button class="sm" data-act="startlog">${startLogText == null ? "Show" : "Hide"}</button></div>
       <pre id="startlog" class="startlog" ${startLogText == null ? "hidden" : ""}>${esc(startLogText || "")}</pre>
       ${SET.cfgSchema.map((sec) => `<h3 class="sec">${esc(sec.title)}</h3>${sec.items.map(fieldHTML).join("")}`).join("")}

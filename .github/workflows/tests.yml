@@ -1,0 +1,12 @@
+# Copy to .github/workflows/tests.yml in the app's repository.
+# Lint, the conformance packs and the app's tests/cases run on every push, with the testkit version the app follows.
+name: Tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  tests:
+    uses: gadominas/app-blueprints/.github/workflows/scriptable-tests.yml@testing-v1.0.0
+    with:
+      testkit-ref: testing-v1.0.0
