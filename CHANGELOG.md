@@ -2,6 +2,19 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.17.2 (2026-11-07): Ready for the App Store
+
+- 📱 **Ready for the App Store**: Built as an app of its own, Go2FGym gets new versions from the App Store instead of downloading them.
+- ✅ **Checked on every change**: Every change now runs the shared app tests: start-up, widget, updates and usage counts.
+- ⏰ **Later still means later**: Tap Later on an update and Go2FGym won’t ask again for two days. Settings › Updates checks any time.
+
+**Changes**
+
+- In-app updates 1.1.0: in a native shell (BuildIt) there is no update check or installer, and Settings › Updates says new versions come through the App Store
+- Portable bridge recipe: checked; the page's messages already reach Scriptable through a queue it collects, so nothing changed
+- Testing recipe: the app-blueprints testkit (lint and five conformance packs) runs on every push (.github/workflows/tests.yml)
+- Blueprint trace: Stability patterns 1.0.1, AI configuration 1.0.1, Launch screen 1.0.1, Widgets 1.1.1, Sound in silent mode 1.0.1
+
 ## 1.17.1 (2026-11-04): Opens on any iPhone
 
 - 📱 **Opens on any iPhone**: Go2FGym opens on iPhones that aren't signed in to iCloud, every time.
