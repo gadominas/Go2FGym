@@ -1,6 +1,6 @@
 {
-  "description": "Pick. Lift. Log. A home-gym workout log for iPhone: pick muscles, see each exercise done, log sets with a rest timer, and let an optional AI coach build your next workout. A Scriptable app.",
-  "homepage": "https://github.com/gadominas/Go2FGym#readme",
+  "description": "Pick. Lift. Log. An iPhone app for Scriptable where you pick the muscles to train, see how each exercise is done, log your sets with a rest timer, and let an optional AI coach build your next workout.",
+  "homepage": "https://github.com/gadominas/Go2FGym#install",
   "topics": [
     "scriptable",
     "scriptable-app",
@@ -11,12 +11,12 @@
     "ai",
     "claude",
     "openai",
+    "ios-widget",
     "fitness",
     "workout-tracker",
     "strength-training",
     "home-gym",
     "exercise-library",
-    "free-exercise-db",
     "strava"
   ],
   "install": {

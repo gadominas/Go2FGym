@@ -1,12 +1,15 @@
+<!-- header:start: repo-site/tools/header.js writes this block from docs/site/header.json -->
 <div align="center">
 
-<img src="docs/logo.svg" width="96" alt="Go2FGym logo: a dumbbell tilted upward with lime plates and two teal motion lines">
+<a href="#install"><img src="docs/banner.png" width="100%" alt="Go2FGym: Pick. Lift. Log. The muscles you want to train go in, a workout with demos, logged sets and your next plan come out. Two iPhone screens show the muscle picker and a live workout, with a tilted dumbbell with lime plates."></a>
 
-# Go2FGym
+<h2>Know what to lift, and see yourself get stronger</h2>
 
-**Pick. Lift. Log.**
+Tap the muscles. Lift the sets. Log your weights.
 
-Your strength coach in your pocket: tap the muscles you want to train, see how every exercise is done, log your sets, and let the optional AI coach build your next workout.<br>An iPhone and iPad app for [Scriptable](https://scriptable.app). One file, no server, no sign-up.
+<a href="#install"><img src="docs/button-install.png" height="48" alt="Install Go2FGym free"></a>&nbsp;&nbsp;<a href="CHANGELOG.md"><img src="docs/button-whats-new.png" height="48" alt="See what's new in Go2FGym"></a>
+
+<sub>Free · iPhone and iPad · Runs in the free Scriptable app · AI coach is optional, with your own Claude or OpenAI key</sub>
 
 [![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fgadominas%2FGo2FGym%2Fmain%2Freleases.json&query=%24.releases%5B0%5D.version&label=version&color=A3E635&labelColor=0E1116&style=flat-square)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/iOS-Scriptable-171B22?style=flat-square&labelColor=0E1116)](https://apps.apple.com/app/scriptable/id1405459188)
@@ -16,6 +19,7 @@ Your strength coach in your pocket: tap the muscles you want to train, see how e
 [![License](https://img.shields.io/badge/license-MIT-171B22?style=flat-square&labelColor=0E1116)](LICENSE)
 
 </div>
+<!-- header:end -->
 
 <p align="center">
   <img src="docs/screenshots/01-pick-muscles.png" width="31%" alt="The Train screen: seven weight plates for the muscle groups, with Legs, Glutes and Core loaded and a button to show 201 exercises.">
