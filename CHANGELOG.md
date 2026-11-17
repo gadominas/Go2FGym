@@ -2,6 +2,19 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.20.0 (2026-11-17): Train without leaving the show
+
+- 🎛 **Edit sets in the show**: Change kg and reps with − and + or by typing, then log or undo the set.
+- 🖼 **See the current exercise**: A small animated photo shows which exercise and set you're on.
+- ≡ **Your workout inside the show**: Swap the animation for your whole workout: pick any set or add one, without leaving.
+
+**Changes**
+
+- The Lift show has a set editor: an animated photo of the exercise, its name and set number, kg and reps with − / + (2.5 kg or 5 lb steps) or typed, and Log set or Undo
+- ‹ and › step through the sets of the workout
+- ≡ Workout swaps the animation for every exercise and its sets: tap a set to edit it, ＋ adds one; clock, stats, captions and the editor stay on screen
+- Changes made in the show appear in the workout when you go back
+
 ## 1.19.0 (2026-11-17): The Lift show
 
 - 📊 **Milestone progress bar**: Watch the bar fill from a grizzly bear to a cow to a small car as you lift.

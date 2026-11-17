@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.19.0';
+const VERSION = '1.20.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -3000,10 +3000,26 @@ function webApp() {
     if (res && res.caption && $("#show")) setCaption(String(res.caption).slice(0, 140), true);
   }
 
+  // The set being edited in the show: the one picked there, else the next set to do.
+  function showTarget() {
+    const list = S.session ? S.session.entries : [];
+    if (S.showSel) {
+      const ei = list.findIndex((x) => x.id === S.showSel.id);
+      if (ei >= 0 && S.showSel.si < list[ei].sets.length) return { ei, si: S.showSel.si, en: list[ei] };
+      S.showSel = null;
+    }
+    const t = nextSetTarget();
+    if (!t) return null;
+    return t.si < 0 ? { ei: t.ei, si: t.en.sets.length - 1, en: t.en } : { ei: t.ei, si: t.si, en: t.en };
+  }
+  const STEP = () => (UNIT === "lb" ? 5 : 2.5);
+
   function openShow() {
     if (!S.session || $("#show")) return;
     const t = liveTotals(S.session);
     S.showIdx = milestone(t.kg).i;
+    S.showSel = null;
+    S.showPane = "lift";
     const el = document.createElement("div");
     el.id = "show";
     el.setAttribute("role", "dialog");
@@ -3012,32 +3028,50 @@ function webApp() {
         <svg viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg></button>
       <span class="sh-live"><i></i>GO2FGYM LIVE</span><b id="sh-clock" class="sh-clock"></b></div>
       <div class="sh-stage" id="sh-stage">
-        <div class="sh-scale" aria-hidden="true"><span>100%</span><span>50%</span><span>0%</span></div>
-        <div class="sh-target" id="sh-target"><span id="sh-emo"></span><i class="sh-shadow"></i></div>
-        <div class="sh-lifter" aria-hidden="true">🏋️</div>
-        <div class="sh-burst" id="sh-burst" aria-live="polite"></div>
+        <button class="sh-pane-btn" id="sh-pane-btn" data-a="show-pane"></button>
+        <div class="sh-lift" id="sh-lift">
+          <div class="sh-scale" aria-hidden="true"><span>100%</span><span>50%</span><span>0%</span></div>
+          <div class="sh-shelf" id="sh-shelf"></div>
+          <div class="sh-target" id="sh-target"><span id="sh-emo"></span><i class="sh-shadow"></i></div>
+          <div class="sh-lifter" aria-hidden="true">🏋️</div>
+          <div class="sh-burst" id="sh-burst" aria-live="polite"></div>
+        </div>
+        <div class="sh-plan" id="sh-plan" hidden></div>
       </div>
-      <p class="sh-goal" id="sh-goal"></p>
-      <div class="sh-bar"><i id="sh-fill"></i><span id="sh-pct"></span></div>
+      <div class="sh-bar"><i id="sh-fill"></i><span id="sh-goal"></span></div>
       <div class="sh-stats">
         <div><b id="sh-kg"></b><span>${UNIT} lifted</span></div><div><b id="sh-sets"></b><span>sets</span></div>
         <div><b id="sh-reps"></b><span>reps</span></div><div><b id="sh-pace"></b><span>${UNIT}/min</span></div></div>
-      <div class="sh-shelf" id="sh-shelf"></div>
       <div class="sh-capwrap"><p class="sh-cap" id="sh-cap"></p>${S.ai.hasKey ? `<button class="sh-ai-btn" id="sh-ai-btn" data-a="show-ai" aria-label="New AI caption">✨</button>` : ""}</div>
-      <p class="sh-rest" id="sh-rest"></p>
-      <button class="sh-log" id="sh-log" data-a="show-log"></button>`;
+      <div class="sh-ed" id="sh-ed"></div>`;
     document.body.appendChild(el);
     document.body.classList.add("show-open");
+    el.addEventListener("input", (ev) => {   // typing kg or reps for the set in the editor
+      const k = ev.target.dataset && ev.target.dataset.sh;
+      if (!k) return;
+      const tg = showTarget();
+      if (!tg) return;
+      const set = tg.en.sets[tg.si];
+      const n = num(ev.target.value);
+      set[k] = k === "r" ? (n == null ? null : Math.round(n)) : n;
+      showEdited();
+    });
     updateShow(true);
     localCaption();
     clearInterval(capTimer);
     capTimer = setInterval(localCaption, 9000);
+  }
+  function showEdited() {   // a value changed in the show: save it, refresh totals; the workout re-renders on close
+    S.showDirty = true;
+    saveDraft();
+    updateShow();
   }
   function closeShow() {
     clearInterval(capTimer);
     const el = $("#show");
     if (el) el.remove();
     document.body.classList.remove("show-open");
+    if (S.showDirty) { S.showDirty = false; render(); }
   }
   function celebrate(m) {
     const b = $("#sh-burst");
@@ -3045,9 +3079,63 @@ function webApp() {
     const bits = ["🎉", "✨", "💪", "🔥", m[3], "⭐"];
     b.innerHTML = `<div class="sh-win">LIFTED ${esc(m[1].toUpperCase())}! ${m[3]}</div>` +
       Array.from({ length: 22 }, (_, i) => `<span style="left:${Math.round(Math.random() * 100)}%;animation-delay:${(Math.random() * 0.6).toFixed(2)}s;--r:${Math.round(Math.random() * 720 - 360)}deg">${bits[i % bits.length]}</span>`).join("");
-    const st = $("#sh-stage");
+    const st = $("#sh-lift");
     if (st) { st.classList.remove("won"); void st.offsetWidth; st.classList.add("won"); setTimeout(() => st.classList.remove("won"), 1300); }   // the next target then rises from the bottom
     setTimeout(() => { if (b) b.innerHTML = ""; }, 3200);
+  }
+  // The workout inside the show: every exercise with its sets; tap a set to edit it, ＋ adds one.
+  function showPlanHTML() {
+    const list = S.session.entries;
+    const tg = showTarget();
+    return list.map((en, ei) => {
+      want(en.id);
+      const doneN = en.sets.filter((x) => x.done).length;
+      const chips = en.sets.map((x, si) => {
+        const sel = tg && tg.ei === ei && tg.si === si;
+        return `<button class="sp-chip${x.done ? " done" : ""}${sel ? " sel" : ""}" data-a="show-pick" data-v="${ei}:${si}" aria-label="Set ${si + 1}${x.done ? ", done" : ""}">
+          <b>${si + 1}</b><span>${x.w ? fmtNum(x.w) : "BW"}×${x.r || "–"}</span></button>`;
+      }).join("");
+      return `<div class="sp-row${en.completed ? " complete" : ""}${tg && tg.ei === ei ? " cur" : ""}">
+        <button class="sp-head" data-a="show-pick" data-v="${ei}:-1"><span class="sp-thumb" data-id="${esc(en.id)}">${imgTag(en.id, 0)}</span>
+          <span class="sp-name">${esc(en.name)}</span><span class="sp-n">${en.completed ? "✓" : `${doneN}/${en.sets.length}`}</span></button>
+        <div class="sp-chips">${chips}<button class="sp-chip add" data-a="show-addset" data-v="${ei}" aria-label="Add a set to ${esc(en.name)}">＋</button></div></div>`;
+    }).join("") || `<p class="sh-none">No exercises yet.</p>`;
+  }
+  let edKey = "";
+  function updateEditor() {
+    const ed = $("#sh-ed");
+    if (!ed) return;
+    const tg = showTarget();
+    if (!tg) { ed.innerHTML = `<p class="sh-alldone">All exercises complete 🎉</p>`; edKey = ""; return; }
+    const set = tg.en.sets[tg.si];
+    want(tg.en.id);
+    const key = `${tg.en.id}:${tg.si}:${set.done}:${tg.en.sets.length}`;
+    if (key !== edKey) {
+      edKey = key;
+      ed.innerHTML = `<div class="sh-ed-top">
+          <div class="stage sh-mini" data-frame="play">${imgTag(tg.en.id, 0, "f0")}${imgTag(tg.en.id, 1, "f1")}<span class="sh-mini-i">${esc(initials(tg.en.name))}</span></div>
+          <div class="sh-ed-name"><b>${esc(tg.en.name)}</b><span>Set ${tg.si + 1} of ${tg.en.sets.length}${set.done ? " · logged" : ""}</span><span class="sh-rest" id="sh-rest"></span></div>
+          <div class="sh-ed-nav"><button data-a="show-nav" data-v="-1" aria-label="Previous set"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><button data-a="show-nav" data-v="1" aria-label="Next set"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button></div></div>
+        <div class="sh-ed-row">
+          <div class="sh-step"><button data-a="show-step" data-v="w:-1" aria-label="Less weight">−</button>
+            <label><input data-sh="w" id="sh-w" inputmode="decimal" placeholder="Body" aria-label="Weight in ${UNIT}"><span>${UNIT}</span></label>
+            <button data-a="show-step" data-v="w:1" aria-label="More weight">+</button></div>
+          <div class="sh-step"><button data-a="show-step" data-v="r:-1" aria-label="Fewer reps">−</button>
+            <label><input data-sh="r" id="sh-r" inputmode="numeric" placeholder="0" aria-label="Reps"><span>reps</span></label>
+            <button data-a="show-step" data-v="r:1" aria-label="More reps">+</button></div></div>
+        <button class="sh-log${set.done ? " undo" : ""}" id="sh-log" data-a="show-log"></button>`;
+    }
+    for (const [k, id] of [["w", "#sh-w"], ["r", "#sh-r"]]) {   // never overwrite what's being typed
+      const inp = $(id);
+      if (inp && document.activeElement !== inp) inp.value = set[k] == null ? "" : String(set[k]);
+    }
+    const log = $("#sh-log");
+    if (log) {
+      log.disabled = !set.done && !(set.r > 0);
+      log.innerHTML = set.done ? `<b>↺ Undo set ${tg.si + 1}</b><span>It goes back to not done</span>`
+        : !(set.r > 0) ? `<b>Enter reps</b><span>then log set ${tg.si + 1}</span>`
+        : `<b>✓ Log set ${tg.si + 1}</b><span>${set.w ? `${fmtNum(set.w)} ${UNIT} × ` : ""}${set.r} reps</span>`;
+    }
   }
   function updateShow(first) {
     const el = $("#show");
@@ -3061,23 +3149,21 @@ function webApp() {
     set("#sh-reps", t.reps);
     set("#sh-pace", t.kg ? fmtNum(Math.round(t.pace)) : "0");
     set("#sh-emo", m.next ? m.next[3] : "🏆");
-    set("#sh-goal", m.next ? `Lifting ${m.next[1]}: ${fmtNum(Math.round(t.kg))} of ${fmtNum(Math.round(m.nextIn))} ${UNIT}` : `Past ${m.cur[1]}. Legendary.`);
-    set("#sh-pct", `${Math.round(m.p * 100)}%`);
+    set("#sh-goal", m.next ? `${m.next[3]} ${cap(m.next[1].replace(/^an? /, ""))}: ${fmtNum(Math.round(t.kg))} / ${fmtNum(Math.round(m.nextIn))} ${UNIT} · ${Math.round(m.p * 100)}%` : `Past ${m.cur[1]}. Legendary.`);
     const fill = $("#sh-fill");
     if (fill) fill.style.width = `${Math.round(m.p * 100)}%`;
     const tgt = $("#sh-target");
     if (tgt) tgt.style.setProperty("--p", m.p.toFixed(3));
     const shelf = $("#sh-shelf");
-    if (shelf) shelf.innerHTML = m.i < 0 ? `<span class="sh-none">Lifted so far: nothing yet. Tick a set.</span>`
-      : `<span class="sh-lbl">Lifted so far</span>${FUN.slice(0, m.i + 1).map((f) => `<span class="sh-trophy" title="${esc(f[1])}">${f[3]}</span>`).join("")}`;
-    const tg = nextSetTarget();
-    const log = $("#sh-log");
-    if (log) {
-      log.disabled = !tg || !tg.ready;
-      log.innerHTML = !tg ? "All exercises complete 🎉" : tg.si < 0 ? `${esc(tg.en.name)}: all sets ticked` : !tg.ready ? `Enter reps for ${esc(tg.en.name)} first`
-        : `<b>✓ Log set ${tg.si + 1}</b><span>${esc(tg.en.name)}${tg.en.sets[tg.si].w ? ` · ${fmtNum(tg.en.sets[tg.si].w)} ${UNIT}` : ""} × ${tg.en.sets[tg.si].r}</span>`;
-    }
+    if (shelf) shelf.innerHTML = m.i < 0 ? "" : FUN.slice(0, m.i + 1).map((f) => `<span title="${esc(f[1])}">${f[3]}</span>`).join("");
+    const plan = S.showPane === "plan";
+    const lift = $("#sh-lift"), pl = $("#sh-plan"), pb = $("#sh-pane-btn");
+    if (lift) lift.hidden = plan;
+    if (pl) { pl.hidden = !plan; if (plan) { const y = pl.scrollTop; pl.innerHTML = showPlanHTML(); pl.scrollTop = y; } }
+    if (pb) pb.innerHTML = plan ? `<span>${m.next ? m.next[3] : "🏆"}</span> Lift` : `<span>≡</span> Workout`;
+    updateEditor();
     if (!first && S.showIdx != null && m.i > S.showIdx) {
+      if (plan) { S.showPane = "lift"; return updateShow(); }   // show the moment it falls
       celebrate(FUN[m.i]);
       aiCaption("milestone");
     }
@@ -3728,10 +3814,51 @@ function webApp() {
     "show-close": () => closeShow(),
     "show-ai": () => { capAiAt = 0; aiCaption("tap"); },
     "show-log": () => {
-      const tg = nextSetTarget();
-      if (!tg || !tg.ready) return;
+      const tg = showTarget();
+      if (!tg) return;
+      const set = tg.en.sets[tg.si];
+      if (!set.done && !(set.r > 0)) return;
       A.done(`${tg.ei}:${tg.si}`);
+      if (set.done) S.showSel = null;   // logged: move on to the next set; undone: stay on it
       updateShow();
+    },
+    "show-pane": () => { S.showPane = S.showPane === "plan" ? "lift" : "plan"; updateShow(); },
+    "show-pick": (v) => {
+      const [ei, si] = v.split(":").map(Number);
+      const en = S.session.entries[ei];
+      if (!en) return;
+      const s2 = si >= 0 ? si : Math.max(0, en.sets.findIndex((x) => !x.done));
+      S.showSel = { id: en.id, si: s2 < 0 ? en.sets.length - 1 : s2 };
+      if (en.completed) { en.completed = false; en.active = true; delete en.doneAt; }
+      S.focusId = en.id;
+      showEdited();
+    },
+    "show-addset": (v) => {
+      const en = S.session.entries[+v];
+      const prev = en.sets[en.sets.length - 1];
+      en.sets.push({ w: prev ? prev.w : null, r: prev ? prev.r : null, done: false });
+      if (en.completed) { en.completed = false; en.active = true; delete en.doneAt; }
+      S.showSel = { id: en.id, si: en.sets.length - 1 };
+      S.focusId = en.id;
+      showEdited();
+    },
+    "show-nav": (v) => {
+      const tg = showTarget();
+      if (!tg) return;
+      const flat = [];
+      S.session.entries.forEach((en, ei) => { if (!en.completed || ei === tg.ei) en.sets.forEach((_, si) => flat.push([ei, si])); });
+      const i = flat.findIndex(([a, b]) => a === tg.ei && b === tg.si);
+      const nx = flat[(i + Number(v) + flat.length) % flat.length];
+      if (nx) { S.showSel = { id: S.session.entries[nx[0]].id, si: nx[1] }; edKey = ""; updateShow(); }
+    },
+    "show-step": (v) => {
+      const tg = showTarget();
+      if (!tg) return;
+      const [k, d] = v.split(":");
+      const set = tg.en.sets[tg.si];
+      if (k === "w") set.w = Math.max(0, Math.round(((set.w || 0) + Number(d) * STEP()) * 100) / 100) || null;
+      else set.r = Math.max(0, (set.r || 0) + Number(d)) || null;
+      showEdited();
     },
     done: (v) => {
       const [ei, si] = ij(v);
@@ -4081,7 +4208,7 @@ p{margin:0 0 10px}
 .mb-x svg{width:18px;height:18px;fill:none;stroke:var(--muted);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;display:block}
 .mb-t{grid-column:1/-1;font-size:calc(12.5px * var(--ts));color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.show-open{overflow:hidden}
-#show{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;gap:10px;padding:calc(var(--band,44px) + 6px) 18px calc(18px + env(safe-area-inset-bottom,0px));
+#show{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;gap:8px;padding:calc(var(--band,44px) + 6px) 18px calc(18px + env(safe-area-inset-bottom,0px));
   background:radial-gradient(120% 70% at 50% 0%,#3a0d14 0%,#121417 55%,#0b0c0e 100%);color:#fff;overflow:hidden}
 .sh-top{display:flex;align-items:center;justify-content:space-between}
 .sh-x{width:40px;height:40px;border-radius:20px;background:rgba(255,255,255,.12);display:grid;place-items:center}
@@ -4090,38 +4217,76 @@ body.show-open{overflow:hidden}
 .sh-live i{width:9px;height:9px;border-radius:5px;background:#ff2d48;animation:shblink 1.2s steps(2) infinite}
 @keyframes shblink{50%{opacity:.2}}
 .sh-clock{font:800 26px/1 var(--display);font-variant-numeric:tabular-nums}
-.sh-stage{position:relative;flex:1;min-height:200px;border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.09));overflow:hidden}
+.sh-stage{position:relative;flex:1;min-height:150px;border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.09));overflow:hidden}
 .sh-scale{position:absolute;left:10px;top:12%;bottom:16%;display:flex;flex-direction:column;justify-content:space-between;font-size:11px;color:rgba(255,255,255,.35);border-left:2px dashed rgba(255,255,255,.15);padding-left:6px}
 .sh-target{position:absolute;left:50%;bottom:calc(16% + var(--p,0) * 52%);transform:translateX(-50%);transition:bottom 1.2s cubic-bezier(.2,.9,.2,1.1);text-align:center}
 .sh-target span{display:block;font-size:min(30vw,130px);line-height:1;filter:drop-shadow(0 10px 18px rgba(0,0,0,.55));animation:shbob 2.4s ease-in-out infinite}
 @keyframes shbob{50%{transform:translateY(-6px) rotate(-2deg)}}
 .sh-shadow{display:block;margin:6px auto 0;width:60%;height:10px;border-radius:50%;background:rgba(0,0,0,.45);filter:blur(4px)}
 .sh-lifter{position:absolute;left:50%;bottom:3%;transform:translateX(-50%);font-size:44px}
-.sh-stage.won .sh-target{animation:shfly 1.1s ease-in forwards}
+.sh-lift.won .sh-target{animation:shfly 1.1s ease-in forwards}
 @keyframes shfly{0%{transform:translateX(-50%) scale(1)}40%{transform:translateX(-50%) scale(1.25)}100%{transform:translate(-50%,-160%) scale(.6);opacity:0}}
 .sh-burst{position:absolute;inset:0;pointer-events:none}
 .sh-burst span{position:absolute;top:-10%;font-size:28px;animation:shfall 2.6s ease-in forwards}
 @keyframes shfall{to{transform:translateY(120vh) rotate(var(--r));opacity:.2}}
 .sh-win{position:absolute;left:50%;top:18%;transform:translateX(-50%);white-space:nowrap;padding:10px 16px;border-radius:14px;background:#ffcc00;color:#14181c;font:800 22px/1 var(--display);box-shadow:0 10px 30px rgba(0,0,0,.4);animation:shpop .5s cubic-bezier(.2,1.6,.4,1)}
 @keyframes shpop{from{transform:translateX(-50%) scale(.3)}}
-.sh-goal{margin:0;font:700 17px/1.2 var(--body);text-align:center}
 .sh-bar{position:relative;height:22px;border-radius:11px;background:rgba(255,255,255,.12);overflow:hidden}
 .sh-bar i{position:absolute;inset:0 auto 0 0;border-radius:11px;background:linear-gradient(90deg,#ff2d48,#ffcc00);transition:width 1.2s cubic-bezier(.2,.9,.2,1)}
-.sh-bar span{position:absolute;inset:0;display:grid;place-items:center;font:800 13px/1 var(--body);text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.sh-bar span{position:absolute;inset:0;display:grid;place-items:center;font:800 13px/1 var(--body);text-shadow:0 1px 2px rgba(0,0,0,.6);white-space:nowrap;overflow:hidden;padding:0 8px}
 .sh-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .sh-stats div{background:rgba(255,255,255,.08);border-radius:12px;padding:8px 4px;text-align:center}
 .sh-stats b{display:block;font:800 24px/1 var(--display);font-variant-numeric:tabular-nums}
 .sh-stats span{display:block;margin-top:3px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.6)}
-.sh-shelf{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:28px;font-size:22px}
+.sh-shelf{position:absolute;left:10px;right:10px;bottom:8px;display:flex;justify-content:flex-end;gap:4px;font-size:18px;opacity:.9}
 .sh-lbl,.sh-none{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.55);margin-right:4px}
 .sh-capwrap{display:flex;align-items:center;gap:8px}
-.sh-cap{flex:1;margin:0;min-height:44px;font:700 18px/1.25 var(--body);color:#fff}
+.sh-cap{flex:1;margin:0;min-height:40px;font:700 16px/1.25 var(--body);color:#fff}
 .sh-cap.in{animation:shcap .5s ease}
 @keyframes shcap{from{opacity:0;transform:translateY(6px)}}
 .sh-ai{display:inline-block;margin-right:6px;padding:2px 6px;border-radius:6px;background:rgba(255,204,0,.2);color:#ffcc00;font-size:11px;vertical-align:2px}
 .sh-ai-btn{flex:none;width:42px;height:42px;border-radius:21px;background:rgba(255,255,255,.12);font-size:20px}
-.sh-rest{margin:0;text-align:center;font:700 14px/1 var(--body);color:#ffcc00;min-height:14px}
-.sh-log{display:flex;flex-direction:column;align-items:center;gap:3px;padding:13px;border-radius:16px;background:#2e8b3e;color:#fff;text-align:center}
+.sh-rest{display:block;font:700 13px/1.1 var(--body);color:#ffcc00;min-height:13px}
+.sh-log{display:flex;flex-direction:column;align-items:center;gap:3px;padding:11px;border-radius:14px;background:#2e8b3e;color:#fff;text-align:center;width:100%}
+.sh-log.undo{background:rgba(255,255,255,.14)}
+.sh-pane-btn{position:absolute;top:8px;right:8px;z-index:3;display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;background:rgba(0,0,0,.45);color:#fff;font:700 14px/1 var(--body);backdrop-filter:blur(6px)}
+.sh-pane-btn span{font-size:16px}
+.sh-lift{position:absolute;inset:0}.sh-lift[hidden],.sh-plan[hidden]{display:none}
+.sh-plan{position:absolute;inset:0;overflow-y:auto;padding:46px 10px 10px;display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch}
+.sp-row{background:rgba(255,255,255,.07);border-radius:12px;padding:8px}
+.sp-row.cur{box-shadow:0 0 0 2px #ffcc00}
+.sp-row.complete{opacity:.6}
+.sp-head{display:flex;align-items:center;gap:8px;width:100%;color:#fff;text-align:left}
+.sp-thumb{position:relative;flex:none;width:34px;height:34px;border-radius:8px;overflow:hidden;background:#fff}
+.sp-thumb img{width:100%;height:100%;object-fit:cover}
+.sp-name{flex:1;min-width:0;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sp-n{font-size:12px;color:rgba(255,255,255,.65);font-weight:700}
+.sp-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.sp-chip{display:flex;flex-direction:column;align-items:center;min-width:46px;padding:5px 6px;border-radius:9px;background:rgba(255,255,255,.1);color:#fff;font-size:11px;line-height:1.2}
+.sp-chip b{font-size:13px}.sp-chip.done{background:#2e8b3e}
+.sp-chip.sel{box-shadow:0 0 0 2px #ffcc00}
+.sp-chip.add{justify-content:center;font-size:18px;min-width:38px}
+.sh-ed{background:rgba(255,255,255,.08);border-radius:16px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.sh-ed-top{display:flex;align-items:center;gap:10px}
+.sh-mini{position:relative;flex:none;width:58px;height:58px;aspect-ratio:auto;margin:0;border-radius:10px;background:#fff}
+.sh-mini-i{position:absolute;inset:0;display:grid;place-items:center;color:#5a636c;font:800 16px var(--display);z-index:0}
+.sh-mini img{z-index:1}
+.sh-ed-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.sh-ed-name b{font:800 17px/1.15 var(--display);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh-ed-name>span{font-size:13px;color:rgba(255,255,255,.7)}
+.sh-ed-nav{display:flex;gap:6px}
+.sh-ed-nav button{width:36px;height:36px;border-radius:18px;background:rgba(255,255,255,.12);display:grid;place-items:center}
+.sh-ed-nav svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.sh-ed-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sh-step{display:flex;align-items:center;background:rgba(0,0,0,.25);border-radius:12px;overflow:hidden}
+.sh-step button{flex:none;width:40px;height:46px;color:#fff;font-size:24px;font-weight:700}
+.sh-step label{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center}
+.sh-step input{width:100%;background:transparent;border:0;color:#fff;text-align:center;font:800 22px/1 var(--display);padding:4px 0 0;-webkit-appearance:none}
+.sh-step input::placeholder{color:rgba(255,255,255,.45)}
+.sh-step input:focus{outline:none}
+.sh-step:focus-within{box-shadow:0 0 0 2px #ffcc00}
+.sh-step label span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.55);padding-bottom:4px}
+.sh-alldone{margin:6px 0;text-align:center;font:700 18px var(--body)}
 .sh-log b{font:800 20px/1 var(--display)}.sh-log span{font-size:13px;opacity:.9}
 .sh-log:disabled{background:rgba(255,255,255,.12);color:rgba(255,255,255,.7);font-weight:700}
 @media (prefers-reduced-motion:reduce){.sh-target span,.sh-live i{animation:none}.sh-target,.sh-bar i,.mb-track i{transition:none}}

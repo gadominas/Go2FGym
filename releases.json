@@ -4,6 +4,35 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.20.0",
+      "date": "2026-11-17",
+      "title": "Train without leaving the show",
+      "highlights": [
+        {
+          "icon": "🎛",
+          "title": "Edit sets in the show",
+          "text": "Change kg and reps with − and + or by typing, then log or undo the set."
+        },
+        {
+          "icon": "🖼",
+          "title": "See the current exercise",
+          "text": "A small animated photo shows which exercise and set you're on."
+        },
+        {
+          "icon": "≡",
+          "title": "Your workout inside the show",
+          "text": "Swap the animation for your whole workout: pick any set or add one, without leaving."
+        }
+      ],
+      "changes": [
+        "The Lift show has a set editor: an animated photo of the exercise, its name and set number, kg and reps with − / + (2.5 kg or 5 lb steps) or typed, and Log set or Undo",
+        "‹ and › step through the sets of the workout",
+        "≡ Workout swaps the animation for every exercise and its sets: tap a set to edit it, ＋ adds one; clock, stats, captions and the editor stay on screen",
+        "Changes made in the show appear in the workout when you go back"
+      ],
+      "fixes": []
+    },
+    {
       "version": "1.19.0",
       "date": "2026-11-17",
       "title": "The Lift show",
