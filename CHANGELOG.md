@@ -2,6 +2,20 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.19.0 (2026-11-17): The Lift show
+
+- 📊 **Milestone progress bar**: Watch the bar fill from a grizzly bear to a cow to a small car as you lift.
+- 🎬 **Full-screen Lift show**: Tap the bar for a big animated view made for screen recording and Strava.
+- ✨ **Funny live captions**: Captions about your total, pace and next milestone; the AI writes new ones when you pass one.
+
+**Changes**
+
+- The workout header shows a progress bar from the last milestone you passed to the next one, with how far you have to go
+- Tap it for the full-screen Lift show: the next object rises as you lift, a celebration plays when it falls, plus clock, kg, sets, reps, pace and the milestones lifted so far
+- A big Log set button in the show ticks the next set, so you can keep filming; the rest countdown shows there too
+- Built-in captions rotate every few seconds; with an AI key, ✨ writes a fresh one from your numbers, and one is written automatically at each milestone
+- Tap the collapse button to go back to the workout
+
 ## 1.18.1 (2026-11-17): Keep your music playing
 
 - 🎧 **Your music keeps playing**: Go2FGym no longer pauses Spotify, YouTube or podcasts when you open it or start a rest timer.

@@ -4,6 +4,36 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.19.0",
+      "date": "2026-11-17",
+      "title": "The Lift show",
+      "highlights": [
+        {
+          "icon": "📊",
+          "title": "Milestone progress bar",
+          "text": "Watch the bar fill from a grizzly bear to a cow to a small car as you lift."
+        },
+        {
+          "icon": "🎬",
+          "title": "Full-screen Lift show",
+          "text": "Tap the bar for a big animated view made for screen recording and Strava."
+        },
+        {
+          "icon": "✨",
+          "title": "Funny live captions",
+          "text": "Captions about your total, pace and next milestone; the AI writes new ones when you pass one."
+        }
+      ],
+      "changes": [
+        "The workout header shows a progress bar from the last milestone you passed to the next one, with how far you have to go",
+        "Tap it for the full-screen Lift show: the next object rises as you lift, a celebration plays when it falls, plus clock, kg, sets, reps, pace and the milestones lifted so far",
+        "A big Log set button in the show ticks the next set, so you can keep filming; the rest countdown shows there too",
+        "Built-in captions rotate every few seconds; with an AI key, ✨ writes a fresh one from your numbers, and one is written automatically at each milestone",
+        "Tap the collapse button to go back to the workout"
+      ],
+      "fixes": []
+    },
+    {
       "version": "1.18.1",
       "date": "2026-11-17",
       "title": "Keep your music playing",

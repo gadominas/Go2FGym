@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.18.1';
+const VERSION = '1.19.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -2908,6 +2908,182 @@ function webApp() {
     const x = Math.floor((kg / w) * 10) / 10;
     return `${emo} You've lifted ${x < 1.1 ? one : `${fmtNum(x)} ${many}`}${next ? `. Next: ${next[1]} ${next[3]}` : ". Legendary."}`;
   }
+  // ------------------------------------------------ milestones: progress and the Lift show
+  // Where the total stands: the milestone passed (cur), the next one, and how far along the way (0..1).
+  function milestone(total) {
+    const kg = UNIT === "lb" ? total * 0.4536 : total;
+    let i = FUN.length - 1;
+    while (i >= 0 && FUN[i][0] > kg) i--;
+    const cur = i >= 0 ? FUN[i] : null, next = FUN[i + 1] || null;
+    const from = cur ? cur[0] : 0, to = next ? next[0] : from;
+    const p = next ? Math.max(0, Math.min(1, (kg - from) / (to - from))) : 1;
+    const toUnit = (k) => (UNIT === "lb" ? k / 0.4536 : k);
+    return { kg, i, cur, next, p, nextIn: next ? toUnit(to) : null, leftIn: next ? Math.max(0, toUnit(to) - total) : 0 };
+  }
+  function mbarHTML(total) {
+    const m = milestone(total);
+    const pct = Math.round(m.p * 100);
+    const text = !m.next ? `${m.cur[3]} Legendary: past ${m.cur[1]}!`
+      : total < 1 ? `Next up: ${m.next[1]} (${fmtNum(Math.round(m.nextIn))} ${UNIT})`
+      : `${pct}% of the way to ${m.next[1]}, ${fmtNum(Math.round(m.leftIn))} ${UNIT} to go`;
+    return `<button class="mbar" data-a="show-open" aria-label="${esc(text)}. Tap for the full-screen lift show.">
+      <span class="mb-e">${m.cur ? m.cur[3] : "💪"}</span>
+      <span class="mb-track"><i style="width:${pct}%"></i></span>
+      <span class="mb-e">${m.next ? m.next[3] : "🏆"}</span>
+      <span class="mb-x" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg></span>
+      <span class="mb-t">${esc(text)}</span></button>`;
+  }
+  function liveTotals(s) {
+    let sets = 0, reps = 0, kg = 0;
+    s.entries.forEach((en) => en.sets.forEach((x) => { if (x.done && x.r > 0) { sets++; reps += x.r; if (x.w) kg += x.w * x.r; } }));
+    const mins = Math.max(1, (Date.now() - new Date(s.start)) / 60000);   // at least a minute, so early pace stays sensible
+    return { sets, reps, kg, mins, pace: kg / mins };
+  }
+  // The exercise the big "Log next set" button ticks: the one in focus, else one in progress, else the next open one.
+  function nextSetTarget() {
+    const list = S.session ? S.session.entries : [];
+    const pick = list.find((x) => x.id === S.focusId && !x.completed) || list.find((x) => !x.completed && (x.active || x.sets.some((y) => y.done))) || list.find((x) => !x.completed);
+    if (!pick) return null;
+    const ei = list.indexOf(pick);
+    const si = pick.sets.findIndex((x) => !x.done);
+    return { ei, si, en: pick, ready: si >= 0 && pick.sets[si].r > 0 };
+  }
+
+  // Captions: built-in ones rotate; the AI writes one on request and when a milestone falls.
+  const CAPTIONS = [
+    (c) => `${c.cur ? `Already lifted ${c.cur[1]}.` : "Warming up."} ${c.next ? `${cap(c.next[1])} is next on the menu.` : "Nothing left to lift on Earth."}`,
+    (c) => `Pace: ${fmtNum(Math.round(c.pace))} ${UNIT} a minute. ${c.next ? `${cap(c.next[1])} is getting nervous.` : ""}`,
+    (c) => (c.next && c.pace > 0 && c.t.kg > 0 ? `At this pace, ${c.next[1]} goes up in about ${Math.max(1, Math.round(c.leftIn / c.pace))} min.` : "The bar is loaded. The phone is filming. No excuses."),
+    (c) => `${c.t.sets} ${c.t.sets === 1 ? "set" : "sets"}, ${c.t.reps} reps, ${c.mins} min. The neighbours think it's an earthquake.`,
+    (c) => (c.ex ? `${c.ex}: doing the heavy lifting so the coffee tastes better.` : "Go to the f***g gym. Done. Now lift."),
+    (c) => (c.next ? `${Math.round(c.p * 100)}% of ${c.next[1]}. Don't you dare stop now.` : "Legend status. Even the whale is impressed."),
+    (c) => (c.cur ? `Somewhere, ${c.cur[2]} are filing a complaint.` : "First set loading. The gym clock is watching."),
+    (c) => `${fmtNum(Math.round(c.t.kg))} ${UNIT} moved before most people found their keys.`,
+  ];
+  let capIdx = -1, capTimer = null, capAiAt = 0;
+  function capContext() {
+    const t = liveTotals(S.session);
+    const m = milestone(t.kg);
+    const tg = nextSetTarget();
+    return { ...m, t, pace: t.pace, mins: Math.round(t.mins), ex: tg ? tg.en.name : "" };
+  }
+  function localCaption() {
+    const c = capContext();
+    let i;
+    do { i = Math.floor(Math.random() * CAPTIONS.length); } while (CAPTIONS.length > 1 && i === capIdx);
+    capIdx = i;
+    setCaption(CAPTIONS[i](c).replace(/\s+/g, " ").trim(), false);
+  }
+  function setCaption(text, ai) {
+    const el = $("#sh-cap");
+    if (!el) return;
+    el.classList.remove("in");
+    void el.offsetWidth;
+    el.innerHTML = `${ai ? '<span class="sh-ai">✨ AI</span>' : ""}${esc(text)}`;
+    el.classList.add("in");
+  }
+  async function aiCaption(reason) {
+    if (!S.ai.hasKey || !S.session || Date.now() - capAiAt < 20000) return;
+    capAiAt = Date.now();
+    const c = capContext();
+    const btn = $("#sh-ai-btn");
+    if (btn) btn.classList.add("busy");
+    const res = await aiCall("show_caption",
+      ["Write ONE short, funny caption for a live gym video overlay that will be shared on Strava.",
+        "Use the facts given: total lifted, what it equals in real-world objects, the next object to lift, pace per minute, time, sets, reps and the current exercise.",
+        reason === "milestone" ? "A milestone was just passed: celebrate it." : "Pick the funniest angle.",
+        "At most 14 words and at most one emoji. Witty, self-ironic and motivating. Never mock bodies, weight or looks. No hashtags. Plain English."].join(" "),
+      { reason, total: `${fmtNum(Math.round(c.t.kg))} ${UNIT}`, equals: c.cur ? c.cur[1] : "not yet a person", next_object: c.next ? c.next[1] : "none, legendary",
+        percent_to_next: Math.round(c.p * 100), pace_per_min: `${Math.round(c.pace)} ${UNIT}`, minutes: c.mins, sets: c.t.sets, reps: c.t.reps, exercise: c.ex || null },
+      { type: "object", additionalProperties: false, required: ["caption"], properties: { caption: { type: "string" } } });
+    if (btn) btn.classList.remove("busy");
+    if (res && res.caption && $("#show")) setCaption(String(res.caption).slice(0, 140), true);
+  }
+
+  function openShow() {
+    if (!S.session || $("#show")) return;
+    const t = liveTotals(S.session);
+    S.showIdx = milestone(t.kg).i;
+    const el = document.createElement("div");
+    el.id = "show";
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-label", "Lift show");
+    el.innerHTML = `<div class="sh-top"><button class="sh-x" data-a="show-close" aria-label="Back to the workout">
+        <svg viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg></button>
+      <span class="sh-live"><i></i>GO2FGYM LIVE</span><b id="sh-clock" class="sh-clock"></b></div>
+      <div class="sh-stage" id="sh-stage">
+        <div class="sh-scale" aria-hidden="true"><span>100%</span><span>50%</span><span>0%</span></div>
+        <div class="sh-target" id="sh-target"><span id="sh-emo"></span><i class="sh-shadow"></i></div>
+        <div class="sh-lifter" aria-hidden="true">🏋️</div>
+        <div class="sh-burst" id="sh-burst" aria-live="polite"></div>
+      </div>
+      <p class="sh-goal" id="sh-goal"></p>
+      <div class="sh-bar"><i id="sh-fill"></i><span id="sh-pct"></span></div>
+      <div class="sh-stats">
+        <div><b id="sh-kg"></b><span>${UNIT} lifted</span></div><div><b id="sh-sets"></b><span>sets</span></div>
+        <div><b id="sh-reps"></b><span>reps</span></div><div><b id="sh-pace"></b><span>${UNIT}/min</span></div></div>
+      <div class="sh-shelf" id="sh-shelf"></div>
+      <div class="sh-capwrap"><p class="sh-cap" id="sh-cap"></p>${S.ai.hasKey ? `<button class="sh-ai-btn" id="sh-ai-btn" data-a="show-ai" aria-label="New AI caption">✨</button>` : ""}</div>
+      <p class="sh-rest" id="sh-rest"></p>
+      <button class="sh-log" id="sh-log" data-a="show-log"></button>`;
+    document.body.appendChild(el);
+    document.body.classList.add("show-open");
+    updateShow(true);
+    localCaption();
+    clearInterval(capTimer);
+    capTimer = setInterval(localCaption, 9000);
+  }
+  function closeShow() {
+    clearInterval(capTimer);
+    const el = $("#show");
+    if (el) el.remove();
+    document.body.classList.remove("show-open");
+  }
+  function celebrate(m) {
+    const b = $("#sh-burst");
+    if (!b) return;
+    const bits = ["🎉", "✨", "💪", "🔥", m[3], "⭐"];
+    b.innerHTML = `<div class="sh-win">LIFTED ${esc(m[1].toUpperCase())}! ${m[3]}</div>` +
+      Array.from({ length: 22 }, (_, i) => `<span style="left:${Math.round(Math.random() * 100)}%;animation-delay:${(Math.random() * 0.6).toFixed(2)}s;--r:${Math.round(Math.random() * 720 - 360)}deg">${bits[i % bits.length]}</span>`).join("");
+    const st = $("#sh-stage");
+    if (st) { st.classList.remove("won"); void st.offsetWidth; st.classList.add("won"); setTimeout(() => st.classList.remove("won"), 1300); }   // the next target then rises from the bottom
+    setTimeout(() => { if (b) b.innerHTML = ""; }, 3200);
+  }
+  function updateShow(first) {
+    const el = $("#show");
+    if (!el || !S.session) return;
+    const t = liveTotals(S.session);
+    const m = milestone(t.kg);
+    const set = (id, v) => { const x = $(id); if (x) x.textContent = v; };
+    set("#sh-clock", clock(S.session.start));
+    set("#sh-kg", fmtNum(Math.round(t.kg)));
+    set("#sh-sets", t.sets);
+    set("#sh-reps", t.reps);
+    set("#sh-pace", t.kg ? fmtNum(Math.round(t.pace)) : "0");
+    set("#sh-emo", m.next ? m.next[3] : "🏆");
+    set("#sh-goal", m.next ? `Lifting ${m.next[1]}: ${fmtNum(Math.round(t.kg))} of ${fmtNum(Math.round(m.nextIn))} ${UNIT}` : `Past ${m.cur[1]}. Legendary.`);
+    set("#sh-pct", `${Math.round(m.p * 100)}%`);
+    const fill = $("#sh-fill");
+    if (fill) fill.style.width = `${Math.round(m.p * 100)}%`;
+    const tgt = $("#sh-target");
+    if (tgt) tgt.style.setProperty("--p", m.p.toFixed(3));
+    const shelf = $("#sh-shelf");
+    if (shelf) shelf.innerHTML = m.i < 0 ? `<span class="sh-none">Lifted so far: nothing yet. Tick a set.</span>`
+      : `<span class="sh-lbl">Lifted so far</span>${FUN.slice(0, m.i + 1).map((f) => `<span class="sh-trophy" title="${esc(f[1])}">${f[3]}</span>`).join("")}`;
+    const tg = nextSetTarget();
+    const log = $("#sh-log");
+    if (log) {
+      log.disabled = !tg || !tg.ready;
+      log.innerHTML = !tg ? "All exercises complete 🎉" : tg.si < 0 ? `${esc(tg.en.name)}: all sets ticked` : !tg.ready ? `Enter reps for ${esc(tg.en.name)} first`
+        : `<b>✓ Log set ${tg.si + 1}</b><span>${esc(tg.en.name)}${tg.en.sets[tg.si].w ? ` · ${fmtNum(tg.en.sets[tg.si].w)} ${UNIT}` : ""} × ${tg.en.sets[tg.si].r}</span>`;
+    }
+    if (!first && S.showIdx != null && m.i > S.showIdx) {
+      celebrate(FUN[m.i]);
+      aiCaption("milestone");
+    }
+    S.showIdx = m.i;
+  }
+
   function clock(start) {
     const sec = Math.max(0, Math.floor((Date.now() - new Date(start)) / 1000));
     const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), ss = String(sec % 60).padStart(2, "0");
@@ -2922,11 +3098,12 @@ function webApp() {
       <div class="ws"><b>${sets}</b><span>${sets === 1 ? "set" : "sets"}</span></div>
       <div class="ws"><b>${reps}</b><span>reps</span></div>
       <div class="ws"><b>${doneEx}/${s.entries.length}</b><span>done</span></div>
-      <p class="wfun">${esc(funLine(kg))}</p>`;
+      ${mbarHTML(kg)}`;
   }
   function updateWStats() {
     const el = $("#wstats");
     if (el && S.session) el.innerHTML = wstatsInner(S.session);
+    updateShow();
   }
 
   function renderWorkout() {
@@ -3409,6 +3586,7 @@ function webApp() {
     if (S.consent) renderTabs();
     else $tabs.innerHTML = "";
     updateLast();
+    if ($("#show")) updateShow();
     window.scrollTo(0, same ? y : key.startsWith("detail:") ? 0 : S.scroll[key] || 0);
     currentKey = key;
     if (S.detailId) want(S.detailId);
@@ -3446,6 +3624,10 @@ function webApp() {
     if (e2 && S.session) e2.textContent = elapsed(S.session.start);
     const wc = $("#wclock");
     if (wc && S.session) wc.textContent = clock(S.session.start);
+    const shc = $("#sh-clock");
+    if (shc && S.session) shc.textContent = clock(S.session.start);
+    const shr = $("#sh-rest");
+    if (shr) { const left = S.rest.end ? Math.ceil((S.rest.end - Date.now()) / 1000) : 0; shr.textContent = left > 0 ? `Rest ${mmss(left)}` : ""; }
   }
 
   // ------------------------------------------------ interactions
@@ -3541,6 +3723,15 @@ function webApp() {
       if (!en.sets.length) en.sets.push({ w: null, r: null, done: false });
       saveDraft();
       render();
+    },
+    "show-open": () => openShow(),
+    "show-close": () => closeShow(),
+    "show-ai": () => { capAiAt = 0; aiCaption("tap"); },
+    "show-log": () => {
+      const tg = nextSetTarget();
+      if (!tg || !tg.ready) return;
+      A.done(`${tg.ei}:${tg.si}`);
+      updateShow();
     },
     done: (v) => {
       const [ei, si] = ij(v);
@@ -3883,6 +4074,57 @@ p{margin:0 0 10px}
 .ws b{display:block;font:800 calc(19px * var(--ts))/1.05 var(--display);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ws span{display:block;font-size:calc(10.5px * var(--ts));color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px;white-space:nowrap}
 .ws-time b{color:var(--accent)}
+.mbar{grid-column:1/-1;display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;column-gap:8px;row-gap:3px;width:100%;padding:6px 10px;border-radius:12px;background:var(--surface);text-align:left}
+.mb-e{font-size:20px;line-height:1}
+.mb-track{height:10px;border-radius:5px;background:var(--bg);overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
+.mb-track i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 60%,#ffcc00));transition:width .8s cubic-bezier(.2,.8,.2,1)}
+.mb-x svg{width:18px;height:18px;fill:none;stroke:var(--muted);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;display:block}
+.mb-t{grid-column:1/-1;font-size:calc(12.5px * var(--ts));color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.show-open{overflow:hidden}
+#show{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;gap:10px;padding:calc(var(--band,44px) + 6px) 18px calc(18px + env(safe-area-inset-bottom,0px));
+  background:radial-gradient(120% 70% at 50% 0%,#3a0d14 0%,#121417 55%,#0b0c0e 100%);color:#fff;overflow:hidden}
+.sh-top{display:flex;align-items:center;justify-content:space-between}
+.sh-x{width:40px;height:40px;border-radius:20px;background:rgba(255,255,255,.12);display:grid;place-items:center}
+.sh-x svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.sh-live{display:flex;align-items:center;gap:6px;font:800 13px/1 var(--body);letter-spacing:.12em;color:#ff5a6e}
+.sh-live i{width:9px;height:9px;border-radius:5px;background:#ff2d48;animation:shblink 1.2s steps(2) infinite}
+@keyframes shblink{50%{opacity:.2}}
+.sh-clock{font:800 26px/1 var(--display);font-variant-numeric:tabular-nums}
+.sh-stage{position:relative;flex:1;min-height:200px;border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.09));overflow:hidden}
+.sh-scale{position:absolute;left:10px;top:12%;bottom:16%;display:flex;flex-direction:column;justify-content:space-between;font-size:11px;color:rgba(255,255,255,.35);border-left:2px dashed rgba(255,255,255,.15);padding-left:6px}
+.sh-target{position:absolute;left:50%;bottom:calc(16% + var(--p,0) * 52%);transform:translateX(-50%);transition:bottom 1.2s cubic-bezier(.2,.9,.2,1.1);text-align:center}
+.sh-target span{display:block;font-size:min(30vw,130px);line-height:1;filter:drop-shadow(0 10px 18px rgba(0,0,0,.55));animation:shbob 2.4s ease-in-out infinite}
+@keyframes shbob{50%{transform:translateY(-6px) rotate(-2deg)}}
+.sh-shadow{display:block;margin:6px auto 0;width:60%;height:10px;border-radius:50%;background:rgba(0,0,0,.45);filter:blur(4px)}
+.sh-lifter{position:absolute;left:50%;bottom:3%;transform:translateX(-50%);font-size:44px}
+.sh-stage.won .sh-target{animation:shfly 1.1s ease-in forwards}
+@keyframes shfly{0%{transform:translateX(-50%) scale(1)}40%{transform:translateX(-50%) scale(1.25)}100%{transform:translate(-50%,-160%) scale(.6);opacity:0}}
+.sh-burst{position:absolute;inset:0;pointer-events:none}
+.sh-burst span{position:absolute;top:-10%;font-size:28px;animation:shfall 2.6s ease-in forwards}
+@keyframes shfall{to{transform:translateY(120vh) rotate(var(--r));opacity:.2}}
+.sh-win{position:absolute;left:50%;top:18%;transform:translateX(-50%);white-space:nowrap;padding:10px 16px;border-radius:14px;background:#ffcc00;color:#14181c;font:800 22px/1 var(--display);box-shadow:0 10px 30px rgba(0,0,0,.4);animation:shpop .5s cubic-bezier(.2,1.6,.4,1)}
+@keyframes shpop{from{transform:translateX(-50%) scale(.3)}}
+.sh-goal{margin:0;font:700 17px/1.2 var(--body);text-align:center}
+.sh-bar{position:relative;height:22px;border-radius:11px;background:rgba(255,255,255,.12);overflow:hidden}
+.sh-bar i{position:absolute;inset:0 auto 0 0;border-radius:11px;background:linear-gradient(90deg,#ff2d48,#ffcc00);transition:width 1.2s cubic-bezier(.2,.9,.2,1)}
+.sh-bar span{position:absolute;inset:0;display:grid;place-items:center;font:800 13px/1 var(--body);text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.sh-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.sh-stats div{background:rgba(255,255,255,.08);border-radius:12px;padding:8px 4px;text-align:center}
+.sh-stats b{display:block;font:800 24px/1 var(--display);font-variant-numeric:tabular-nums}
+.sh-stats span{display:block;margin-top:3px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.6)}
+.sh-shelf{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:28px;font-size:22px}
+.sh-lbl,.sh-none{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.55);margin-right:4px}
+.sh-capwrap{display:flex;align-items:center;gap:8px}
+.sh-cap{flex:1;margin:0;min-height:44px;font:700 18px/1.25 var(--body);color:#fff}
+.sh-cap.in{animation:shcap .5s ease}
+@keyframes shcap{from{opacity:0;transform:translateY(6px)}}
+.sh-ai{display:inline-block;margin-right:6px;padding:2px 6px;border-radius:6px;background:rgba(255,204,0,.2);color:#ffcc00;font-size:11px;vertical-align:2px}
+.sh-ai-btn{flex:none;width:42px;height:42px;border-radius:21px;background:rgba(255,255,255,.12);font-size:20px}
+.sh-rest{margin:0;text-align:center;font:700 14px/1 var(--body);color:#ffcc00;min-height:14px}
+.sh-log{display:flex;flex-direction:column;align-items:center;gap:3px;padding:13px;border-radius:16px;background:#2e8b3e;color:#fff;text-align:center}
+.sh-log b{font:800 20px/1 var(--display)}.sh-log span{font-size:13px;opacity:.9}
+.sh-log:disabled{background:rgba(255,255,255,.12);color:rgba(255,255,255,.7);font-weight:700}
+@media (prefers-reduced-motion:reduce){.sh-target span,.sh-live i{animation:none}.sh-target,.sh-bar i,.mb-track i{transition:none}}
 .wfun{grid-column:1/-1;margin:0;font-size:calc(13px * var(--ts));color:var(--ink);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .drag{flex:none;width:28px;height:36px;margin-left:-8px;display:grid;place-items:center;color:var(--muted);touch-action:none;-webkit-user-select:none;user-select:none;cursor:grab}
 .drag svg{width:18px;height:18px;fill:currentColor}
