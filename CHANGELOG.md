@@ -2,6 +2,14 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.20.1 (2026-11-17): Set editor always there
+
+- 🎛 **Set editor stays put**: Reopening the Lift show always shows the kg and reps editor, ready for the next set.
+
+**Fixes**
+
+- After leaving the Lift show and opening it again, the set editor was an empty bar until you picked a set in the Workout view
+
 ## 1.20.0 (2026-11-17): Train without leaving the show
 
 - 🎛 **Edit sets in the show**: Change kg and reps with − and + or by typing, then log or undo the set.

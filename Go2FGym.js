@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.20.0';
+const VERSION = '1.20.1';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -3020,6 +3020,7 @@ function webApp() {
     S.showIdx = milestone(t.kg).i;
     S.showSel = null;
     S.showPane = "lift";
+    edKey = "";   // a new show has an empty editor: always draw it
     const el = document.createElement("div");
     el.id = "show";
     el.setAttribute("role", "dialog");
@@ -3068,6 +3069,7 @@ function webApp() {
   }
   function closeShow() {
     clearInterval(capTimer);
+    edKey = "";
     const el = $("#show");
     if (el) el.remove();
     document.body.classList.remove("show-open");
@@ -3110,7 +3112,7 @@ function webApp() {
     const set = tg.en.sets[tg.si];
     want(tg.en.id);
     const key = `${tg.en.id}:${tg.si}:${set.done}:${tg.en.sets.length}`;
-    if (key !== edKey) {
+    if (key !== edKey || !ed.firstElementChild) {   // also redraw if the editor is empty for any reason
       edKey = key;
       ed.innerHTML = `<div class="sh-ed-top">
           <div class="stage sh-mini" data-frame="play">${imgTag(tg.en.id, 0, "f0")}${imgTag(tg.en.id, 1, "f1")}<span class="sh-mini-i">${esc(initials(tg.en.name))}</span></div>
