@@ -4,6 +4,26 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.18.1",
+      "date": "2026-11-17",
+      "title": "Keep your music playing",
+      "highlights": [
+        {
+          "icon": "🎧",
+          "title": "Your music keeps playing",
+          "text": "Go2FGym no longer pauses Spotify, YouTube or podcasts when you open it or start a rest timer."
+        }
+      ],
+      "changes": [
+        "The rest-timer beep now mixes with other apps' audio and follows the Ring/Silent switch",
+        "No audio is started until you tick a set; opening or tapping around the app never touches audio",
+        "Beep with silent mode on is now off by default (it pauses other apps' music while a rest timer runs); existing installs are switched off once"
+      ],
+      "fixes": [
+        "Opening Go2FGym stopped music or video playing in other apps"
+      ]
+    },
+    {
       "version": "1.18.0",
       "date": "2026-11-07",
       "title": "Built with, explained",

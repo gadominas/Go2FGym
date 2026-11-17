@@ -2,6 +2,20 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.18.1 (2026-11-17): Keep your music playing
+
+- 🎧 **Your music keeps playing**: Go2FGym no longer pauses Spotify, YouTube or podcasts when you open it or start a rest timer.
+
+**Changes**
+
+- The rest-timer beep now mixes with other apps' audio and follows the Ring/Silent switch
+- No audio is started until you tick a set; opening or tapping around the app never touches audio
+- Beep with silent mode on is now off by default (it pauses other apps' music while a rest timer runs); existing installs are switched off once
+
+**Fixes**
+
+- Opening Go2FGym stopped music or video playing in other apps
+
 ## 1.18.0 (2026-11-07): Built with, explained
 
 - 🧩 **Know what's inside**: Tap any blueprint in Settings › Built with to see what it is, what it does, what it drives and why it matters.

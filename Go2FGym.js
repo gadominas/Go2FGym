@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.18.0';
+const VERSION = '1.18.1';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -175,7 +175,7 @@ const settings = {
   strongman: false, olympic: false,   // exercise types that need a platform, coach or special gear
   icloudBackup: true,   // mirror history.json to iCloud Drive/Scriptable/Go2FGym-backup
   checkUpdates: true,   // offer new versions from GitHub (asks again 2 days after "Later")
-  silentBeep: true,     // rest-timer beep with the Ring/Silent switch on (audio-playback); pauses other music while a timer runs
+  silentBeep: false,    // opt-in: rest-timer beep with the Ring/Silent switch on (audio-playback); pauses other music while a timer runs
   shareUsage: false, usageAsked: false,  // anonymous usage counts: off until the person agrees
   stravaMode: "funny",  // default tone for Strava posts
   cfg: {},
@@ -266,6 +266,11 @@ async function loadSettings() {
   const saved = await load("settings", null);
   settingsOk = !loadIssues.includes("settings");   // settings that were never read are never saved over
   if (saved) Object.assign(settings, saved);
+  if (!settings.audioMix1) {   // 1.18.1: never take other apps' audio unless asked; the old default was on
+    settings.silentBeep = false;
+    settings.audioMix1 = true;
+    if (saved && settingsOk) saveSettings();
+  }
   const d = { theme: "auto", density: "comfortable", font: "sans", textSize: 1, unit: "kg", stravaMode: "funny" };
   for (const k of Object.keys(d)) if (setSetting(k, settings[k]) === null) settings[k] = d[k];
   settings.equipment = Array.isArray(settings.equipment) ? EQUIPMENT.filter((x) => settings.equipment.includes(x)) : [];
@@ -1194,7 +1199,7 @@ function clientState() {
     consent,
     version: VERSION,
     look: lookState(),
-    cfg: { unit: settings.unit, rest: cfg("restSeconds"), equipment: settings.equipment, disclaimerVersion: DISCLAIMER_VERSION, silentBeep: settings.silentBeep !== false },
+    cfg: { unit: settings.unit, rest: cfg("restSeconds"), equipment: settings.equipment, disclaimerVersion: DISCLAIMER_VERSION, silentBeep: settings.silentBeep === true },
     usageAsk: usageAvailable() && !settings.usageAsked && !settings.shareUsage,
   };
 }
@@ -1612,12 +1617,21 @@ function webApp() {
   }
 
   // ------------------------------------------------ audio (rest timer)
-  let actx = null;
-  function unlockAudio() {
+  // Go2FGym's sounds mix with other apps (Spotify, YouTube keep playing). "ambient" tells iOS (17+) exactly that;
+  // audio only starts when a rest timer starts, never just because the app was opened or tapped.
+  const canMix = (() => { try { if (navigator.audioSession) { navigator.audioSession.type = "ambient"; return true; } } catch (e) {} return false; })();
+  let actx = null, actxIdle = null;
+  function unlockAudio() {   // call from a tap that starts a rest timer
+    if (!canMix && !silentBeepOn()) return;   // older iOS can't mix Web Audio: no beep rather than stopping your music
+    clearTimeout(actxIdle);
     try {
       if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
       if (actx.state === "suspended") actx.resume();
     } catch (e) { /* no audio */ }
+  }
+  function releaseAudio(ms) {   // let go of the audio hardware once the beep has played
+    clearTimeout(actxIdle);
+    actxIdle = setTimeout(() => { try { if (actx && actx.state === "running") actx.suspend(); } catch (e) {} }, ms);
   }
   function beep() {
     if (!actx) return;
@@ -1660,11 +1674,11 @@ function webApp() {
   function audioOff() {   // other apps' music can play again
     clearTimeout(audioOffT);
     try { keepAwake.pause(); } catch (e) {}
-    try { if (navigator.audioSession) navigator.audioSession.type = "auto"; } catch (e) {}
+    try { if (navigator.audioSession) navigator.audioSession.type = "ambient"; } catch (e) {}
   }
   function audioOffSoon(ms) { clearTimeout(audioOffT); audioOffT = setTimeout(audioOff, ms); }   // sounds that come and go (games, timers)
   let restSound = false;   // a media session is on for the rest timer
-  const silentBeepOn = () => CFG.silentBeep !== false;
+  const silentBeepOn = () => CFG.silentBeep === true;
 
   // ------------------------------------------------ history helpers
   const sessionsDesc = () => [...S.history.sessions].sort((a, b) => b.start.localeCompare(a.start));
@@ -1738,7 +1752,8 @@ function webApp() {
   function startRest(seconds, activity) {
     const secs = seconds || CFG.rest;
     S.rest = { end: Date.now() + secs * 1000, total: secs, beeped: false };
-    if (silentBeepOn()) { audioOn("webaudio"); restSound = true; }   // started from a tap: the beep will play in silent mode
+    unlockAudio();   // inside the ✓ tap, so the beep may play later; mixes with other apps' audio
+    if (silentBeepOn()) { audioOn("webaudio"); restSound = true; }   // opted in: the beep will play in silent mode
     const lbl = $("#rest .rest-label");   // a between-sets activity replaces the word "Rest"
     if (lbl) { lbl.textContent = activity ? `🏃 ${activity}` : "Rest"; lbl.classList.toggle("act", !!activity); }
     tick();
@@ -2086,7 +2101,7 @@ function webApp() {
       <h3 class="sec">Appearance</h3>${lookHTML()}
       <h3 class="sec">Workout</h3>
       <div class="lk-row"><span class="lk-l">Weight unit</span>${segRow("unit", [["kg", "kg"], ["lb", "lb"]], s.unit, "set")}<small class="muted">The app redraws in this unit when you close Settings</small></div>
-      ${swRow("silentBeep", "Beep with silent mode on", "Plays the rest-timer beep with the Ring/Silent switch on. Music from other apps pauses while a timer runs.", s.silentBeep !== false)}
+      ${swRow("silentBeep", "Beep with silent mode on", "Off: the rest-timer beep mixes with your music and follows the Ring/Silent switch. On: it beeps even in silent mode, but Spotify, YouTube and other apps pause while a rest timer runs.", s.silentBeep === true)}
       <h3 class="sec">Library</h3>
       <p class="hint">Equipment you own. Exercises for it appear in the library.</p>
       ${SET.equipmentAll.map((q) => swRow(q, EQ_NAMES[q] || q, "", s.equipment.includes(q), "equip")).join("")}
@@ -3414,6 +3429,7 @@ function webApp() {
         if (!S.rest.beeped) {
           S.rest.beeped = true;
           beep();
+          releaseAudio(1500);
           if (restSound) { restSound = false; audioOffSoon(2000); }   // after the beep, other music can play again
           el.classList.add("go");
           el.querySelector(".rest-time").textContent = "Go";
@@ -3423,6 +3439,7 @@ function webApp() {
       }
     } else {
       el.hidden = true;
+      releaseAudio(300);
       if (restSound) { restSound = false; audioOff(); }   // skipped, finished or discarded before the beep
     }
     const e2 = $("#elapsed");
@@ -3575,6 +3592,7 @@ function webApp() {
     "rest-add": () => {
       const base = Math.max(S.rest.end, Date.now());
       S.rest = { end: base + 30000, total: Math.max(S.rest.total, Math.ceil((base + 30000 - Date.now()) / 1000)), beeped: false };
+      unlockAudio();
       if (silentBeepOn()) { audioOn("webaudio"); restSound = true; }
       tick();
     },
@@ -3637,7 +3655,6 @@ function webApp() {
   };
 
   document.addEventListener("click", (ev) => {
-    unlockAudio();
     const t = ev.target.closest("[data-a]");
     if (!t || t.disabled) return;
     const fn = A[t.dataset.a];
@@ -3701,7 +3718,7 @@ function webApp() {
     onSettings(st) {   // fresh Settings state from the Scriptable side
       SET = st;
       CFG.rest = st.cfg.restSeconds;
-      CFG.silentBeep = st.settings.silentBeep !== false;
+      CFG.silentBeep = st.settings.silentBeep === true;
       S.ai.stravaMode = st.settings.stravaMode;
       renderCfg();
     },
