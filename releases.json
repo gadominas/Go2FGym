@@ -4,6 +4,35 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.22.0",
+      "date": "2026-11-18",
+      "title": "Exercise gallery",
+      "highlights": [
+        {
+          "icon": "🎞",
+          "title": "Browse without going back",
+          "text": "A filmstrip under the photo shows the exercises you came from. Tap one to switch."
+        },
+        {
+          "icon": "👆",
+          "title": "Swipe or tap the arrows",
+          "text": "Swipe the photo or use ‹ › to step through the list in place."
+        },
+        {
+          "icon": "➕",
+          "title": "Add from the photo",
+          "text": "＋ Add on the photo puts the exercise in your workout; a ✓ marks the added ones."
+        }
+      ],
+      "changes": [
+        "The exercise page shows a filmstrip of the list you opened it from (filtered exercises, your workout or a built plan), with the current one highlighted and a counter",
+        "Tap a thumbnail, swipe the photo or use ‹ › to switch exercises on the same page",
+        "＋ Add / ✓ Added on the photo; thumbnails of exercises already in your workout show a ✓",
+        "Back returns to the list you came from, with your filters"
+      ],
+      "fixes": []
+    },
+    {
       "version": "1.21.0",
       "date": "2026-11-18",
       "title": "Clear muscle choices",

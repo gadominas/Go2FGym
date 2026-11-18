@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.21.0';
+const VERSION = '1.22.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -2728,15 +2728,72 @@ function webApp() {
       return `<span class="tag"><i class="dot pl-${g ? g.plate : "steel"}"></i>${esc(cap(m))}</span>`;
     }).join("");
   }
+  // ------------------------------------------------ exercise gallery: browse the list you came from without leaving
+  function galleryIds(id) {
+    let ids = [], from = "";
+    if (S.tab === "train" && S.trainView === "list") { ids = listItems().map((x) => x.id); from = "exercise list"; }
+    else if (S.tab === "train" && S.trainView === "plan" && S.plan) { ids = S.plan.exercises.map((x) => x.id); from = "plan"; }
+    else if (S.tab === "workout" && S.session) { ids = S.session.entries.map((x) => x.id); from = "workout"; }
+    ids = ids.filter((x) => S.byId[x]);
+    return ids.includes(id) ? { ids, from } : { ids: [id], from: "" };
+  }
+  function galleryState() {
+    const g = S.detailList && S.detailList.ids.includes(S.detailId) ? S.detailList : { ids: [S.detailId], from: "" };
+    return { ...g, i: g.ids.indexOf(S.detailId) };
+  }
+  function galThumb(id, cur) {
+    const x = S.byId[id];
+    return `<button class="gal-th${cur ? " cur" : ""}" data-a="gal" data-v="${esc(id)}" aria-label="${esc(x.n)}"${cur ? ' aria-current="true"' : ""}>
+      <span class="gal-img" data-id="${esc(id)}">${imgTag(id, 0)}<span class="gal-in">${esc(initials(x.n))}</span>${inSession(id) ? '<i class="gal-ok">✓</i>' : ""}</span>
+      <span class="gal-name">${esc(x.n)}</span></button>`;
+  }
+  function galleryGo(id) {
+    if (!id || id === S.detailId) return;
+    S.detailId = id;
+    render();
+  }
+  let galIo = null;
+  function galleryAfterRender() {
+    const strip = $("#gal-strip");
+    if (!strip) return;
+    const cur = strip.querySelector(".gal-th.cur");
+    if (cur) strip.scrollLeft = cur.offsetLeft - (strip.clientWidth - cur.offsetWidth) / 2;   // keep the current one centred
+    const g = galleryState();
+    [g.ids[g.i - 1], g.ids[g.i + 1]].forEach((id) => id && want(id));   // neighbours ready for a quick swipe
+    if (galIo) galIo.disconnect();
+    if (!("IntersectionObserver" in window)) { g.ids.slice(Math.max(0, g.i - 6), g.i + 7).forEach(want); return; }
+    galIo = new IntersectionObserver((es) => es.forEach((en) => { if (en.isIntersecting) { want(en.target.dataset.id); galIo.unobserve(en.target); } }), { root: strip, rootMargin: "0px 240px" });
+    strip.querySelectorAll(".gal-img[data-id]").forEach((el) => { if (!S.imgs[el.dataset.id]) galIo.observe(el); });
+  }
+  // Swipe the photo left or right to move through the gallery.
+  let galSwipe = null;
+  document.addEventListener("pointerdown", (ev) => {
+    const st = ev.target.closest && ev.target.closest(".det-stage");
+    galSwipe = st && !ev.target.closest("button") ? { x: ev.clientX, y: ev.clientY, t: Date.now() } : null;
+  });
+  document.addEventListener("pointerup", (ev) => {
+    if (!galSwipe) return;
+    const dx = ev.clientX - galSwipe.x, dy = ev.clientY - galSwipe.y;
+    galSwipe = null;
+    if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    const g = galleryState();
+    if (g.ids.length > 1) galleryGo(g.ids[(g.i + (dx < 0 ? 1 : -1) + g.ids.length) % g.ids.length]);
+  });
+
   function renderDetail() {
     const e = S.byId[S.detailId];
     if (!e) return `<p class="empty-line">Exercise not found.</p>`;
     const on = inSession(e.id);
     const last = lastSets(e.id);
     const back = S.tab === "workout" ? "Workout" : S.tab === "history" ? "History" : "Exercises";
+    const gal = galleryState();
     return `<header class="bar"><button class="back" data-a="close-detail">‹ ${back}</button>${S.tab === "workout" ? "" : toWorkoutBtn()}</header>
       <h1 class="title">${esc(e.n)}</h1>
-      <div class="stage" data-frame="play">${e.has ? imgTag(e.id, 0, "f0") + imgTag(e.id, 1, "f1") : `<p class="noimg">Photos not downloaded. Tap Update library on the Train tab.</p>`}</div>
+      <div class="stage det-stage" data-frame="play">${e.has ? imgTag(e.id, 0, "f0") + imgTag(e.id, 1, "f1") : `<p class="noimg">Photos not downloaded. Tap Update library on the Train tab.</p>`}
+        ${gal.ids.length > 1 ? `<button class="gal-nav prev" data-a="gal-step" data-v="-1" aria-label="Previous exercise"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><button class="gal-nav next" data-a="gal-step" data-v="1" aria-label="Next exercise"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>` : ""}
+        <button class="gal-add${on ? " on" : ""}" data-a="add" data-v="${esc(e.id)}" aria-label="${on ? "In your workout. Tap to remove." : "Add to workout"}">${on ? "✓ Added" : "＋ Add"}</button></div>
+      ${gal.ids.length > 1 ? `<div class="gal"><div class="gal-strip" id="gal-strip">${gal.ids.map((id) => galThumb(id, id === e.id)).join("")}</div>
+        <p class="gal-count">${gal.i + 1} of ${gal.ids.length}${gal.from ? ` · ${esc(gal.from)}` : ""}. Swipe the photo or tap a thumbnail.</p></div>` : ""}
       ${e.has ? `<div class="seg" role="group" aria-label="Demo frame">
         <button data-a="frame" data-v="0" aria-pressed="false">Start</button>
         <button data-a="frame" data-v="play" aria-pressed="true">Play</button>
@@ -3680,7 +3737,7 @@ function webApp() {
     if ($("#show")) updateShow();
     window.scrollTo(0, same ? y : key.startsWith("detail:") ? 0 : S.scroll[key] || 0);
     currentKey = key;
-    if (S.detailId) want(S.detailId);
+    if (S.detailId) { want(S.detailId); galleryAfterRender(); }
     else if (S.tab === "train" && (S.trainView === "list" || S.trainView === "plan")) observeThumbs();
   }
 
@@ -3776,17 +3833,19 @@ function webApp() {
     browse: () => { if (S.groups.size) { S.trainView = "list"; S.q = ""; render(); } },
     home: () => { S.trainView = "home"; render(); },
     filter: (v) => { const i = v.indexOf("|"); S[v.slice(0, i)] = v.slice(i + 1); render(); },
-    open: (v) => { S.detailId = v; render(); },
+    open: (v) => { S.detailList = galleryIds(v); S.detailId = v; render(); },
+    gal: (v) => galleryGo(v),
+    "gal-step": (v) => { const g = galleryState(); if (g.ids.length > 1) galleryGo(g.ids[(g.i + Number(v) + g.ids.length) % g.ids.length]); },
     preview: (v) => openPreview(v),
     "pv-close": () => closePreview(),
-    "pv-open": (v) => { closePreview(); S.detailId = v; render(); },
+    "pv-open": (v) => { closePreview(); S.detailList = galleryIds(v); S.detailId = v; render(); },
     "add-ex": () => addExercises(),
     "go-muscles": () => { S.tab = "train"; S.detailId = null; S.trainView = "home"; render(); },
     "plan-start-add": () => {
       const go = () => { startPlan(); addExercises(); };
       return S.session && S.session.entries.length ? arm("plan-start-add", go) : go();
     },
-    "close-detail": () => { S.detailId = null; render(); },
+    "close-detail": () => { S.detailId = null; S.detailList = null; render(); },
     add: (v) => {
       if (inSession(v)) {
         const s = S.session;
@@ -4418,6 +4477,25 @@ body.is-dragging{-webkit-user-select:none;user-select:none}
 .trend polyline{fill:none;stroke:var(--accent);stroke-width:2.5;vector-effect:non-scaling-stroke}
 .trend circle{fill:var(--accent)}
 .cta{margin-top:18px}
+.det-stage{touch-action:pan-y;-webkit-user-select:none;user-select:none}
+.det-stage img{pointer-events:none;-webkit-user-drag:none;user-drag:none}   /* swipes reach the stage, never an image drag */
+.gal-nav{position:absolute;top:50%;z-index:2;width:38px;height:38px;margin-top:-19px;border-radius:19px;background:rgba(0,0,0,.45);display:grid;place-items:center;backdrop-filter:blur(4px)}
+.gal-nav.prev{left:8px}.gal-nav.next{right:8px}
+.gal-nav svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.gal-add{position:absolute;top:8px;right:8px;z-index:2;padding:7px 12px;border-radius:999px;background:var(--accent);color:#fff;font:700 calc(14px * var(--ts))/1 var(--body);box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.gal-add.on{background:var(--done)}
+.gal{margin:2px 0 10px}
+.gal-strip{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 6px;scroll-behavior:smooth;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
+.gal-strip::-webkit-scrollbar{display:none}
+.gal-th{flex:none;width:76px;display:flex;flex-direction:column;gap:4px;text-align:left;scroll-snap-align:center;opacity:.72}
+.gal-th.cur{opacity:1}
+.gal-img{position:relative;width:76px;height:57px;border-radius:9px;overflow:hidden;background:var(--surface);display:grid;place-items:center}
+.gal-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}
+.gal-in{font:800 15px var(--display);color:var(--muted)}
+.gal-th.cur .gal-img{box-shadow:0 0 0 3px var(--accent)}
+.gal-ok{position:absolute;right:3px;bottom:3px;width:18px;height:18px;border-radius:9px;background:var(--done);color:#fff;font:800 11px/18px var(--body);text-align:center;font-style:normal}
+.gal-name{font-size:calc(11px * var(--ts));line-height:1.2;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.gal-count{margin:2px 0 0;font-size:calc(12px * var(--ts));color:var(--muted)}
 .ver{font-size:calc(12px * var(--ts));color:var(--muted);margin:14px 0 0;opacity:.8}
 #upd{position:fixed;inset:0;z-index:48;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}
 .updp{width:100%;max-width:640px;background:var(--surface);color:var(--ink);border-radius:22px 22px 0 0;padding:20px 18px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;

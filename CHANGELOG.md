@@ -2,6 +2,19 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.22.0 (2026-11-18): Exercise gallery
+
+- 🎞 **Browse without going back**: A filmstrip under the photo shows the exercises you came from. Tap one to switch.
+- 👆 **Swipe or tap the arrows**: Swipe the photo or use ‹ › to step through the list in place.
+- ➕ **Add from the photo**: ＋ Add on the photo puts the exercise in your workout; a ✓ marks the added ones.
+
+**Changes**
+
+- The exercise page shows a filmstrip of the list you opened it from (filtered exercises, your workout or a built plan), with the current one highlighted and a counter
+- Tap a thumbnail, swipe the photo or use ‹ › to switch exercises on the same page
+- ＋ Add / ✓ Added on the photo; thumbnails of exercises already in your workout show a ✓
+- Back returns to the list you came from, with your filters
+
 ## 1.21.0 (2026-11-18): Clear muscle choices
 
 - 🎯 **See what you picked**: Chosen muscle groups get a red ring and a ✓; the others fade back. ✕ Clear all resets them.
