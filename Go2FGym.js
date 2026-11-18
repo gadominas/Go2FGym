@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.20.1';
+const VERSION = '1.21.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -2612,7 +2612,7 @@ function webApp() {
   function plateHTML(g) {
     const on = S.groups.has(g.key);
     return `<button class="plate pl-${g.plate}" data-a="plate" data-v="${g.key}" aria-pressed="${on}">
-      <span class="pl-name">${g.label}</span><span class="pl-count">${countFor(g.muscles)}</span></button>`;
+      <span class="pl-name">${g.label}</span><span class="pl-count">${countFor(g.muscles)}</span><span class="pl-ck" aria-hidden="true">✓</span></button>`;
   }
 
   function renderHome() {
@@ -2623,9 +2623,12 @@ function webApp() {
       ? `<button class="resume" data-a="tab" data-v="workout"><span>Workout in progress</span><b>${plural(s.entries.length, "exercise")}, ${elapsed(s.start)}</b></button>`
       : "";
     return `${appHeader()}<h1 class="hero">Train what today?</h1>
-      <p class="lead">Load one or more plates.</p>
+      <div class="rack-head">${S.groups.size
+        ? `<p class="lead sel-sum"><b>${S.groups.size} selected:</b> ${esc(GROUPS.filter((g) => S.groups.has(g.key)).map((g) => g.label).join(" + "))}</p>
+           <button class="clear-sel" data-a="plates-clear" aria-label="Unselect all muscle groups">✕ Clear all</button>`
+        : `<p class="lead">Load one or more plates.</p>`}</div>
       ${resume}
-      <div class="rack">${GROUPS.map(plateHTML).join("")}</div>
+      <div class="rack${S.groups.size ? " has-sel" : ""}">${GROUPS.map(plateHTML).join("")}</div>
       <button class="primary" data-a="browse" ${sel ? "" : "disabled"}>${sel ? `Show ${countFor(selectedMuscles())} exercises` : "Pick a muscle group"}</button>
       ${S.ai.hasKey ? `<button class="secondary ai" data-a="builder">✨ Build a workout with AI</button>` : ""}
       <footer class="lib">
@@ -3769,6 +3772,7 @@ function webApp() {
     "close-disclaimer": () => { S.showDisclaimer = false; render(); },
     tab: (v) => { S.showDisclaimer = false; S.detailId = null; S.tab = v; S.armed = null; render(); },
     plate: (v) => { S.groups.has(v) ? S.groups.delete(v) : S.groups.add(v); S.muscle = "all"; render(); },
+    "plates-clear": () => { S.groups.clear(); S.muscle = "all"; render(); },
     browse: () => { if (S.groups.size) { S.trainView = "list"; S.q = ""; render(); } },
     home: () => { S.trainView = "home"; render(); },
     filter: (v) => { const i = v.indexOf("|"); S[v.slice(0, i)] = v.slice(i + 1); render(); },
@@ -4362,7 +4366,17 @@ body.is-dragging{-webkit-user-select:none;user-select:none}
 .pl-name{position:absolute;left:8%;right:8%;top:20%;text-align:center;font:800 calc(17px * var(--ts))/1 var(--display);letter-spacing:-.01em}
 .pl-count{position:absolute;left:0;right:0;bottom:19%;text-align:center;font:600 calc(13px * var(--ts))/1 var(--body);opacity:.8;font-variant-numeric:tabular-nums}
 .plate[aria-pressed="true"]{transform:scale(1.05);box-shadow:0 0 0 3px var(--bg),0 0 0 6px var(--ink),inset 0 0 0 5px rgba(0,0,0,.16),inset 0 0 0 9px rgba(255,255,255,.10)}
-.plate[aria-pressed="false"]{opacity:.82}
+.plate{transition:transform .18s ease,opacity .18s ease,filter .18s ease,box-shadow .18s ease}
+.rack.has-sel .plate[aria-pressed="false"]{opacity:.38;filter:grayscale(.65) brightness(.85);transform:scale(.93)}
+.rack .plate[aria-pressed="true"]{transform:scale(1.07);box-shadow:0 0 0 4px var(--bg),0 0 0 8px var(--accent),0 10px 26px color-mix(in srgb,var(--accent) 45%,transparent),inset 0 0 0 5px rgba(0,0,0,.16),inset 0 0 0 9px rgba(255,255,255,.10)}
+.pl-ck{position:absolute;top:-4px;right:-4px;z-index:2;width:30px;height:30px;border-radius:15px;background:var(--accent);color:#fff;font:800 17px/1 var(--body);display:none;place-items:center;box-shadow:0 0 0 3px var(--bg)}
+.plate[aria-pressed="true"] .pl-ck{display:grid}
+.rack-head{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:36px}
+.rack-head .lead{margin:0}
+.sel-sum{color:var(--ink)!important;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel-sum b{color:var(--accent)}
+.clear-sel{flex:none;padding:7px 12px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font:600 calc(14px * var(--ts))/1 var(--body);white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.plate{transition:none}}
 @media (prefers-color-scheme:dark){.pl-iron{box-shadow:inset 0 0 0 5px rgba(255,255,255,.14),inset 0 0 0 1.5px rgba(255,255,255,.35)}}
 .pl-red{--pc:var(--p-red);--pi:#fff}.pl-blue{--pc:var(--p-blue);--pi:#fff}.pl-yellow{--pc:var(--p-yellow);--pi:#1A1A12}
 .pl-green{--pc:var(--p-green);--pi:#fff}.pl-white{--pc:var(--p-white);--pi:#1A1D20}.pl-steel{--pc:var(--p-steel);--pi:#fff}.pl-iron{--pc:var(--p-iron);--pi:#E9ECEF}

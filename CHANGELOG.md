@@ -2,6 +2,16 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.21.0 (2026-11-18): Clear muscle choices
+
+- 🎯 **See what you picked**: Chosen muscle groups get a red ring and a ✓; the others fade back. ✕ Clear all resets them.
+
+**Changes**
+
+- Selected muscle plates are larger, ringed in red with a ✓ badge, and unselected ones fade when anything is chosen
+- The line above the plates says what's selected, e.g. 2 selected: Chest + Arms
+- ✕ Clear all unselects every muscle group in one tap
+
 ## 1.20.1 (2026-11-17): Set editor always there
 
 - 🎛 **Set editor stays put**: Reopening the Lift show always shows the kg and reps editor, ready for the next set.

@@ -4,6 +4,24 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.21.0",
+      "date": "2026-11-18",
+      "title": "Clear muscle choices",
+      "highlights": [
+        {
+          "icon": "🎯",
+          "title": "See what you picked",
+          "text": "Chosen muscle groups get a red ring and a ✓; the others fade back. ✕ Clear all resets them."
+        }
+      ],
+      "changes": [
+        "Selected muscle plates are larger, ringed in red with a ✓ badge, and unselected ones fade when anything is chosen",
+        "The line above the plates says what's selected, e.g. 2 selected: Chest + Arms",
+        "✕ Clear all unselects every muscle group in one tap"
+      ],
+      "fixes": []
+    },
+    {
       "version": "1.20.1",
       "date": "2026-11-17",
       "title": "Set editor always there",
