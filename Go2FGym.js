@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.22.1';
+const VERSION = '1.23.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -178,6 +178,7 @@ const settings = {
   silentBeep: false,    // opt-in: rest-timer beep with the Ring/Silent switch on (audio-playback); pauses other music while a timer runs
   shareUsage: false, usageAsked: false,  // anonymous usage counts: off until the person agrees
   stravaMode: "funny",  // default tone for Strava posts
+  goal: "strength",     // training goal that steers the muscle map and the next workout: run, sprint, strength, look, bb
   cfg: {},
   // aiInvite: { next, shown, later, off }   the AI invitation's schedule (internal state, no UI)
 };
@@ -242,6 +243,7 @@ const SET_KEYS = {
   strongman: ["bool", "library"], olympic: ["bool", "library"],
   icloudBackup: ["bool", ""], checkUpdates: ["bool", ""], shareUsage: ["bool", ""], silentBeep: ["bool", ""],
   stravaMode: [(v) => ["serious", "funny", "neutral"].includes(v), ""],
+  goal: [(v) => ["run", "sprint", "strength", "look", "bb"].includes(v), ""],
 };
 // Returns the effect ('', 'library' or 'reload'), or null when the key or value isn't allowed.
 function setSetting(k, v) {
@@ -1199,7 +1201,7 @@ function clientState() {
     consent,
     version: VERSION,
     look: lookState(),
-    cfg: { unit: settings.unit, rest: cfg("restSeconds"), equipment: settings.equipment, disclaimerVersion: DISCLAIMER_VERSION, silentBeep: settings.silentBeep === true },
+    cfg: { unit: settings.unit, rest: cfg("restSeconds"), equipment: settings.equipment, disclaimerVersion: DISCLAIMER_VERSION, silentBeep: settings.silentBeep === true, goal: settings.goal || "strength" },
     usageAsk: usageAvailable() && !settings.usageAsked && !settings.shareUsage,
   };
 }
@@ -1567,6 +1569,7 @@ function webApp() {
     rest: { end: 0, total: 0, beeped: true },
     openSession: null, armed: null, sync: null,
     histView: "calendar", cal: null, stravaMode: {}, focusId: null, reviewIds: new Set(),
+    goal: ["run", "sprint", "strength", "look", "bb"].includes(CFG.goal) ? CFG.goal : "strength",
     consent: !!(BOOT.consent && BOOT.consent.version === CFG.disclaimerVersion),
     showDisclaimer: false,
     ai: {
@@ -2173,6 +2176,111 @@ function webApp() {
     { key: "hard", label: "Hard" },
   ];
   const GROUP_KEYS = GROUPS.map((g) => g.key);
+
+  // ------------------------------------------------ training goals: they steer the muscle map and the next workout
+  // target = working sets a week per muscle group (about 10–20 for growth; less where the goal needs little).
+  const GOALS = [
+    { key: "run", icon: "🏃", label: "Running", target: { glutes: 12, legs: 12, core: 10, back: 8, shoulders: 4, chest: 4, arms: 3 },
+      focus: "strong glutes, legs and core for an efficient, injury-resistant stride",
+      scheme: "3–4 sets of 10–15 reps, 45–75 s rest; single-leg and hip-stability work (lunges, step-ups, hip thrusts, calf raises) and anti-rotation core", intensity: "moderate" },
+    { key: "sprint", icon: "⚡", label: "Sprinting", target: { glutes: 14, legs: 14, core: 8, back: 8, shoulders: 4, chest: 4, arms: 4 },
+      focus: "explosive hip extension and a strong posterior chain",
+      scheme: "4–6 sets of 3–6 explosive reps, 2–3 min rest; hip thrusts, deadlift variations, jump squats, split squats, calves and core", intensity: "hard" },
+    { key: "strength", icon: "💪", label: "Strength", target: { legs: 12, back: 12, chest: 10, glutes: 8, shoulders: 8, core: 6, arms: 6 },
+      focus: "overall strength on the big compound lifts",
+      scheme: "4–5 sets of 3–6 reps on compound lifts with 2–3 min rest, then 1–2 accessories for 8–10 reps", intensity: "hard" },
+    { key: "look", icon: "✨", label: "Aesthetics", target: { chest: 12, back: 12, shoulders: 12, arms: 12, legs: 8, glutes: 8, core: 8 },
+      focus: "a balanced, defined physique: shoulders, arms, chest and back",
+      scheme: "3–4 sets of 8–12 reps close to failure, 60–90 s rest; side raises and arm work for shape, balanced upper body", intensity: "moderate" },
+    { key: "bb", icon: "🏆", label: "Bodybuilding", target: { chest: 16, back: 16, shoulders: 14, arms: 14, legs: 14, glutes: 10, core: 8 },
+      focus: "maximum muscle and symmetry for a bodybuilding stage",
+      scheme: "4 sets of 8–15 reps near failure, 60–90 s rest; 2–3 exercises per muscle from different angles, controlled tempo", intensity: "hard" },
+  ];
+  const goalOf = (k) => GOALS.find((g) => g.key === k) || GOALS[2];
+  const STATUS = {
+    need: { label: "Needs attention", color: "#ef4444" },
+    low: { label: "Low", color: "#f59e0b" },
+    ok: { label: "On track", color: "#22a559" },
+    over: { label: "Overtrained", color: "#8b5cf6" },
+  };
+  // Last 7 days of working sets per group against the goal's weekly target, plus recovery.
+  function goalInput() {
+    const g = goalOf(S.goal);
+    return { goal: g.label, focus: g.focus, scheme: g.scheme, weekly_set_targets: g.target };
+  }
+  function muscleInsights(goalKey) {
+    const goal = goalOf(goalKey || S.goal);
+    const w7 = Object.fromEntries(groupStats(7).map((x) => [x.group, x]));
+    const rows = GROUPS.map((g) => {
+      const x = w7[g.key];
+      const sets = x.sets_last_7_days, target = goal.target[g.key], d = x.days_since_trained;
+      const r = sets / target;
+      const status = r > 1.4 ? "over" : r >= 0.8 ? "ok" : r >= 0.4 ? "low" : "need";
+      return { g, sets, target, r, status, days: d, recovering: d != null && d < 1 && sets > 0 };
+    });
+    const pick = rows.filter((x) => x.status !== "over" && x.status !== "ok" && !x.recovering)
+      .sort((a, b) => (b.target - b.sets) - (a.target - a.sets) || b.target - a.target);
+    const fallback = rows.filter((x) => x.status !== "over").sort((a, b) => (b.target - b.sets) - (a.target - a.sets));
+    const next = (pick.length ? pick : fallback).slice(0, 2).map((x) => x.g.key);
+    return { goal, rows, next };
+  }
+  function goalChips() {
+    return `<div class="goal-chips" role="group" aria-label="Training goal">${GOALS.map((g) =>
+      `<button class="goal-chip" data-a="goal" data-v="${g.key}" aria-pressed="${S.goal === g.key}"><span>${g.icon}</span>${g.label}</button>`).join("")}</div>`;
+  }
+  // A simple front and back figure; each muscle group is coloured by its status.
+  function bodyMap(ins, small) {
+    const col = {};
+    ins.rows.forEach((x) => (col[x.g.key] = STATUS[x.status].color));
+    const part = (k, shape) => shape.replace("/>", ` fill="${col[k]}" class="bm-p${ins.rows.find((x) => x.g.key === k).recovering ? " rec" : ""}"><title>${GROUPS.find((g) => g.key === k).label}</title></${shape.match(/^<(\w+)/)[1]}>`);
+    const n = (shape) => shape.replace("/>", ` class="bm-n"/>`);
+    const fig = (cx, back) => {
+      const o = (x) => cx + x;
+      return [
+        n(`<circle cx="${o(0)}" cy="20" r="13"/>`), n(`<rect x="${o(-5)}" y="32" width="10" height="9" rx="3"/>`),
+        part("shoulders", `<ellipse cx="${o(-27)}" cy="52" rx="12" ry="10"/>`), part("shoulders", `<ellipse cx="${o(27)}" cy="52" rx="12" ry="10"/>`),
+        back ? part("back", `<path d="M${o(-19)} 44 L${o(19)} 44 L${o(16)} 112 Q${o(0)} 120 ${o(-16)} 112 Z"/>`)
+          : part("chest", `<rect x="${o(-21)}" y="44" width="20" height="24" rx="8"/>`) + part("chest", `<rect x="${o(1)}" y="44" width="20" height="24" rx="8"/>`),
+        back ? "" : part("core", `<rect x="${o(-15)}" y="71" width="30" height="44" rx="8"/>`),
+        part("arms", `<rect x="${o(-43)}" y="62" width="13" height="40" rx="6"/>`), part("arms", `<rect x="${o(30)}" y="62" width="13" height="40" rx="6"/>`),
+        part("arms", `<rect x="${o(-45)}" y="105" width="11" height="36" rx="5"/>`), part("arms", `<rect x="${o(34)}" y="105" width="11" height="36" rx="5"/>`),
+        back ? part("glutes", `<ellipse cx="${o(-10)}" cy="128" rx="11" ry="11"/>`) + part("glutes", `<ellipse cx="${o(10)}" cy="128" rx="11" ry="11"/>`)
+          : n(`<rect x="${o(-18)}" y="117" width="36" height="18" rx="7"/>`),
+        part("legs", `<rect x="${o(-19)}" y="${back ? 142 : 138}" width="17" height="${back ? 54 : 58}" rx="8"/>`), part("legs", `<rect x="${o(2)}" y="${back ? 142 : 138}" width="17" height="${back ? 54 : 58}" rx="8"/>`),
+        part("legs", `<rect x="${o(-17)}" y="200" width="13" height="40" rx="6"/>`), part("legs", `<rect x="${o(4)}" y="200" width="13" height="40" rx="6"/>`),
+        `<text class="bm-t" x="${o(0)}" y="256" text-anchor="middle">${back ? "Back" : "Front"}</text>`,
+      ].join("");
+    };
+    return `<svg class="bmap${small ? " small" : ""}" viewBox="0 0 230 262" role="img" aria-label="Muscle map for ${esc(ins.goal.label)}: ${esc(ins.rows.map((x) => `${x.g.label} ${STATUS[x.status].label.toLowerCase()}`).join(", "))}">${fig(60, false)}${fig(170, true)}</svg>`;
+  }
+  function insightRows(ins) {
+    const order = { need: 0, low: 1, over: 2, ok: 3 };
+    return [...ins.rows].sort((a, b) => order[a.status] - order[b.status] || a.r - b.r).map((x) => {
+      const w = Math.min(100, Math.round((x.sets / (x.target * 1.6)) * 100)), t = Math.round((1 / 1.6) * 100);
+      return `<div class="ins-row"><span class="ins-name"><i class="dot pl-${x.g.plate}"></i>${x.g.label}</span>
+        <span class="ins-bar" title="${x.sets} of ${x.target} sets this week"><i style="width:${w}%;background:${STATUS[x.status].color}"></i><b style="left:${t}%"></b></span>
+        <span class="ins-n">${x.sets}/${x.target}</span>
+        <span class="ins-s" style="color:${STATUS[x.status].color}">${STATUS[x.status].label}${x.recovering ? " · recovering" : ""}</span></div>`;
+    }).join("");
+  }
+  function nextCard(small) {
+    const ins = muscleInsights();
+    const labels = ins.next.map((k) => GROUPS.find((g) => g.key === k).label);
+    const legend = Object.values(STATUS).map((v) => `<span class="lg"><i class="dot" style="background:${v.color}"></i>${v.label}</span>`).join("");
+    return `<section class="nextcard${small ? " small" : ""}">
+      <h2>${small ? "What's next" : "Your goal"}</h2>
+      ${goalChips()}
+      <p class="muted small goal-why">${esc(cap(ins.goal.focus))}. Targets are working sets a week; colours show your last 7 days.</p>
+      <div class="ins-top">${bodyMap(ins, small)}
+        <div class="ins-next"><span class="ins-k">Train next for ${esc(ins.goal.label.toLowerCase())}</span>
+          <b class="ins-groups">${ins.next.map((k) => `<i class="dot pl-${GROUPS.find((g) => g.key === k).plate}"></i>`).join("")} ${esc(labels.join(" + "))}</b>
+          <span class="muted small">${esc(ins.goal.scheme.split(";")[0])}</span></div></div>
+      <div class="legend">${legend}</div>
+      ${small ? "" : `<div class="ins-rows">${insightRows(ins)}</div>`}
+      <div class="ins-btns">${S.ai.hasKey ? `<button class="primary" data-a="build-goal">✨ Build next workout</button>` : ""}
+        <button class="${S.ai.hasKey ? "secondary" : "primary"}" data-a="pick-goal">Pick ${esc(labels.join(" + "))} exercises</button></div>
+    </section>`;
+  }
   const libEquipment = () => [...new Set(S.lib.map((e) => e.eq))];
   const isoDay = (d) => new Date(d).toISOString().slice(0, 10);
   const groupOf = (id) => { const ex = S.byId[id]; return ex ? GROUP_OF[ex.pm[0]] : null; };
@@ -2230,6 +2338,7 @@ function webApp() {
     "DEFAULTS (only where user_note says nothing):",
     "- Use ONLY exercises from candidates, referenced by exact id. Big compound movements first, isolation and core last. Usually 4 to 7 exercises.",
     "- If target is 'auto', choose the muscle groups that are most due from recent_training and balance push, pull, legs and core. Avoid loading a group hard if it was trained in the last 48 hours unless asked.",
+    "- training_goal steers exercise choice, sets, reps, rest and order (follow its scheme and focus) wherever user_note and request say nothing; name the goal in summary.",
     "- Intensity: easy = 2 sets of 12 to 15 reps, about 3 reps in reserve; moderate = 3 sets of 8 to 12, 2 reps in reserve; hard = 4 sets of 6 to 10, 1 rep in reserve.",
     "- Time: about 5 minutes of warm-up, then 2 to 3 minutes per working set including rest and any between_sets activity.",
     "- rest_seconds 45 to 180 normally; longer only to fit a between_sets activity. between_sets is an empty string when nothing is asked.",
@@ -2266,6 +2375,7 @@ function webApp() {
     "watch_out: 0 to 3 points, e.g. a drop in reps, a very high or low volume, an imbalance such as lots of push and no pull. Empty if nothing stands out.",
     "focus_next: 2 to 4 muscle groups to prioritise in the next sessions, chosen from undertrained groups in last_4_weeks and balance (push/pull, upper/lower, core), with intensity light, moderate or hard and a sensible number of working sets for one session.",
     "Do not put a group that was trained hard today in focus_next with hard intensity.",
+    "training_goal is what the user trains for (running, sprinting, strength, aesthetics or bodybuilding): judge balance against its weekly_set_targets, choose focus_next for it, and name it where it matters.",
     "recovery: one sentence on when today's muscles are ready again (typically 48 to 72 hours).",
     "next_workout: the groups for the next session, when (e.g. 'Tomorrow' or 'In 2 days'), and a one-sentence idea.",
     "Keep every string under 25 words. Plain English. This is not medical advice; if anything suggests pain, recommend rest and a professional.",
@@ -2336,6 +2446,7 @@ function webApp() {
         minutes: b.minutes, intensity: b.intensity, note: note || null,
       },
       recent_training: groupStats(14),
+      training_goal: goalInput(),
       last_sessions: sessionsDesc().slice(0, 5).map((s) => ({
         date: isoDay(s.start), groups: s.groups, exercises: s.entries.map((en) => `${en.name}: ${setsText(en.sets)}`),
       })),
@@ -2408,6 +2519,7 @@ function webApp() {
     if (!S.ai.hasKey) return toast("Add a Claude or OpenAI key in AI settings first.", true);
     const input = {
       today: isoDay(new Date()),
+      training_goal: goalInput(),
       workout: {
         date: isoDay(s.start), title: s.title || null,
         duration_minutes: s.end ? minutesBetween(s.start, s.end) : null,
@@ -3364,6 +3476,7 @@ function webApp() {
           <button class="entry-name" data-a="open" data-v="${esc(en.id)}">${esc(en.name)}</button>
           <span class="muted small">${esc(fmtSets(en.sets))}</span></div>`).join("")}
         ${renderAnalysis(s)}
+        ${sessionsDesc()[0] && sessionsDesc()[0].id === s.id ? nextCard(true) : ""}
         ${renderStrava(s)}
         <div class="row"><button class="link" data-a="repeat" data-v="${esc(s.id)}">Repeat this workout</button>
         <button class="link danger${S.armed === "del" + s.id ? " armed" : ""}" data-a="del-sess" data-v="${esc(s.id)}">${S.armed === "del" + s.id ? "Tap to delete" : "Delete"}</button></div></div>` : ""}
@@ -3435,7 +3548,7 @@ function webApp() {
   function renderProgress() {
     const asc = [...S.history.sessions].sort((a, b) => a.start.localeCompare(b.start));
     const head = `<header class="bar"><h1 class="title">Progress</h1>${asc.length ? nextButton() : ""}</header>`;
-    if (!asc.length) return head + `<div class="empty"><p>Log a few workouts and your trends show up here: weekly volume by muscle group, balance, and your best lifts.</p></div>`;
+    if (!asc.length) return head + nextCard(false) + `<div class="empty"><p>Log a few workouts and your trends show up here: weekly volume by muscle group, balance, and your best lifts.</p></div>`;
     // weekly sets stacked by muscle group, last 12 weeks
     const thisWeek = weekStart(new Date());
     const weeks = Array.from({ length: 12 }, (_, i) => {
@@ -3504,7 +3617,7 @@ function webApp() {
     const mv = volume(month.flatMap((s) => s.entries));
     const due = [...stats].sort((a, b) => (b.days_since_trained ?? 99) - (a.days_since_trained ?? 99))[0];
     const dueG = GROUPS.find((g) => g.key === due.group);
-    return head + `<p class="lead">This month: ${plural(month.length, "workout")}, ${plural(mv.n, "set")}${mv.v ? `, ${fmtNum(mv.v)} ${UNIT} lifted` : ""}.
+    return head + nextCard(false) + `<p class="lead">This month: ${plural(month.length, "workout")}, ${plural(mv.n, "set")}${mv.v ? `, ${fmtNum(mv.v)} ${UNIT} lifted` : ""}.
         ${streak ? `${streak >= 2 ? `<b>${streak} weeks in a row</b> with at least one workout.` : "Trained this week."}` : ""}</p>
       <h2>Sets per week</h2>
       <svg class="weeks" viewBox="0 0 ${W} ${H}" role="img" aria-label="Sets per week for the last 12 weeks, stacked by muscle group">${grid}${bars}</svg>
@@ -3517,13 +3630,12 @@ function webApp() {
 
   // ------------------------------------------------ next workout + last-workout pill
   function nextSuggestion() {
+    // The goal picks the muscle groups; the AI coach's idea from the last review rides along when it agrees.
+    const ins = muscleInsights();
     const latest = sessionsDesc()[0];
-    if (latest && latest.ai && latest.ai.next && latest.ai.next.groups.length) {
-      const f = latest.ai.focus_next.find((x) => latest.ai.next.groups.includes(x.group));
-      return { groups: latest.ai.next.groups, intensity: f ? (f.intensity === "light" ? "easy" : f.intensity) : null, why: "your AI coach's suggestion", idea: latest.ai.next.idea };
-    }
-    const due = groupStats(28).sort((a, b) => (b.days_since_trained ?? 99) - (a.days_since_trained ?? 99)).slice(0, 2).map((x) => x.group);
-    return { groups: due, intensity: null, why: "your most-due muscle groups", idea: "" };
+    const ai = latest && latest.ai && latest.ai.next;
+    const idea = ai && ai.groups && ai.groups.some((k) => ins.next.includes(k)) ? ai.idea || "" : "";
+    return { groups: ins.next, intensity: ins.goal.intensity, why: `your ${ins.goal.label.toLowerCase()} goal`, idea };
   }
   function usualMinutes() {
     const ds = sessionsDesc().slice(0, 6).filter((s) => s.end).map((s) => minutesBetween(s.start, s.end)).sort((a, b) => a - b);
@@ -3531,8 +3643,8 @@ function webApp() {
     const med = ds[Math.floor(ds.length / 2)];
     return [20, 30, 45, 60].reduce((best, m) => (Math.abs(m - med) < Math.abs(best - med) ? m : best), 45);
   }
-  function buildNextNow() {
-    const n = nextSuggestion();
+  function buildNextNow(fromGoal) {
+    const n = fromGoal ? { groups: muscleInsights().next, intensity: goalOf(S.goal).intensity, why: `your ${goalOf(S.goal).label.toLowerCase()} goal`, idea: "" } : nextSuggestion();
     const eqs = libEquipment();
     S.builder = {
       groups: n.groups.filter((k) => GROUP_KEYS.includes(k)),
@@ -3826,6 +3938,9 @@ function webApp() {
     "plan-start": () => (S.session && S.session.entries.length ? arm("plan-start", startPlan) : startPlan()),
     analyze: (v) => analyze(v),
     reanalyze: (v) => { const s = S.history.sessions.find((x) => x.id === v); if (s && !S.aiBusy) { delete s.ai; analyze(v); } },
+    goal: (v) => { if (!GOALS.some((g) => g.key === v)) return; S.goal = v; send("set", { k: "goal", v }); render(); },
+    "build-goal": () => buildNextNow(true),
+    "pick-goal": () => { S.groups = new Set(muscleInsights().next); S.muscle = "all"; S.detailId = null; S.tab = "train"; S.trainView = "list"; render(); },
     "build-next": (v) => {
       const s = S.history.sessions.find((x) => x.id === v);
       const f = s && s.ai && s.ai.focus_next.find((x) => s.ai.next.groups.includes(x.group));
@@ -4572,6 +4687,34 @@ body.is-dragging{-webkit-user-select:none;user-select:none}
 .f-red{fill:var(--p-red)}.f-blue{fill:var(--p-blue)}.f-yellow{fill:var(--p-yellow)}.f-green{fill:var(--p-green)}.f-white{fill:var(--p-white)}.f-steel{fill:var(--p-steel)}.f-iron{fill:var(--p-iron)}
 @media (prefers-color-scheme:dark){.weeks rect{stroke:rgba(255,255,255,.22)}}
 .balance{background:var(--surface);border-radius:14px;padding:6px 12px}
+.nextcard{background:var(--surface);border-radius:16px;padding:12px 14px 14px;margin:6px 0 18px}
+.nextcard h2{margin:0 0 8px}
+.goal-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -2px;padding:2px}
+.goal-chips::-webkit-scrollbar{display:none}
+.goal-chip{flex:none;display:flex;align-items:center;gap:5px;padding:7px 11px;border-radius:999px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);font:600 calc(13.5px * var(--ts))/1 var(--body);white-space:nowrap}
+.goal-chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.goal-why{margin:8px 0 4px}
+.ins-top{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:10px;align-items:center}
+.bmap{width:100%;height:auto;display:block}
+.bm-n{fill:color-mix(in srgb,var(--ink) 16%,transparent)}
+.bm-p{stroke:var(--surface);stroke-width:1.5}
+.bm-p.rec{stroke:var(--ink);stroke-dasharray:3 2;stroke-width:1.5}
+.bm-t{font-size:11px;fill:var(--muted)}
+.ins-next{display:flex;flex-direction:column;gap:5px}
+.ins-k{font-size:calc(11.5px * var(--ts));text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.ins-groups{font:800 calc(20px * var(--ts))/1.15 var(--display)}
+.ins-groups .dot{margin-right:2px}
+.nextcard .legend{margin:8px 0 4px}
+.ins-rows{margin:6px 0 4px}
+.ins-row{display:grid;grid-template-columns:86px 1fr 40px 104px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:calc(13px * var(--ts))}
+.ins-name{display:flex;align-items:center;gap:6px}
+.ins-bar{position:relative;height:9px;border-radius:5px;background:var(--bg)}
+.ins-bar i{position:absolute;inset:0 auto 0 0;border-radius:5px}
+.ins-bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.55}
+.ins-n{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.ins-s{font-weight:700;font-size:calc(12px * var(--ts))}
+.ins-btns{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.ins-btns button{margin:0}
 .bal{display:grid;grid-template-columns:92px 1fr 26px 74px;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line)}
 .bal:first-child{border-top:0}
 .bal-name{display:flex;align-items:center;gap:6px;font-size:calc(14px * var(--ts));font-weight:600}

@@ -2,6 +2,20 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.23.0 (2026-11-18): Train for your goal
+
+- 🎯 **Pick your goal**: Running, sprinting, strength, aesthetics or bodybuilding: it steers every suggestion.
+- 🧍 **Muscle map**: See which muscles need attention, are low, on track or overtrained this week.
+- ✨ **Build the next one**: Train next picks the biggest gaps for your goal; build it with AI or pick exercises.
+
+**Changes**
+
+- Progress opens with your goal: chips for Running, Sprinting, Strength, Aesthetics and Bodybuilding, each with weekly set targets per muscle group and a rep and rest scheme
+- A front and back muscle map colours each group by its last 7 days against the goal: needs attention, low, on track or overtrained; groups trained in the last day show as recovering
+- Train next suggests the two biggest gaps for your goal, skipping recovering groups, with ✨ Build next workout (AI) and Pick exercises
+- After a workout, the newest session in History shows What's next with the same goal chips, map and buttons
+- The goal steers the AI plan builder and the AI review, and the ✨ Build next button
+
 ## 1.22.1 (2026-11-18): Smooth gallery
 
 - 🎞 **Smooth switching**: Picking another exercise in the gallery glides straight to it, with no flicker.
