@@ -2,6 +2,15 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.24.1 (2026-11-18): Preview in the Lift show
+
+- ▶️ **Quick look in the show**: Tap the exercise photo or name in the Lift show for the 10-second animated preview.
+
+**Changes**
+
+- In the Lift show, tapping the exercise photo or name opens the same animated preview as the workout screen; it closes by itself after 10 seconds, or tap Close or outside it
+- The photo has a small ▶ badge so you know it can be tapped
+
 ## 1.24.0 (2026-11-18): Never lose your place
 
 - 📍 **Back where you left off**: The Lift show remembers your exercise and set, even after closing it or restarting.

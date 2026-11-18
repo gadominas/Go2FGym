@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.24.0';
+const VERSION = '1.24.1';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -3350,8 +3350,10 @@ function webApp() {
     if (key !== edKey || !ed.firstElementChild) {   // also redraw if the editor is empty for any reason
       edKey = key;
       ed.innerHTML = `<div class="sh-ed-top">
-          <div class="stage sh-mini" data-frame="play">${imgTag(tg.en.id, 0, "f0")}${imgTag(tg.en.id, 1, "f1")}<span class="sh-mini-i">${esc(initials(tg.en.name))}</span></div>
-          <div class="sh-ed-name"><b>${esc(tg.en.name)}</b><span>Set ${tg.si + 1} of ${tg.en.sets.length}${set.done ? " · logged" : ""}</span><span class="sh-rest" id="sh-rest"></span></div>
+          <button class="sh-mini-btn" data-a="show-pv" data-v="${esc(tg.en.id)}" aria-label="Preview ${esc(tg.en.name)}">
+            <span class="stage sh-mini" data-frame="play">${imgTag(tg.en.id, 0, "f0")}${imgTag(tg.en.id, 1, "f1")}<span class="sh-mini-i">${esc(initials(tg.en.name))}</span></span>
+            <span class="sh-mini-play" aria-hidden="true">▶</span></button>
+          <div class="sh-ed-name"><button class="sh-ed-nb" data-a="show-pv" data-v="${esc(tg.en.id)}">${esc(tg.en.name)}</button><span>Set ${tg.si + 1} of ${tg.en.sets.length}${set.done ? " · logged" : ""}</span><span class="sh-rest" id="sh-rest"></span></div>
           <div class="sh-ed-nav"><button data-a="show-nav" data-v="-1" aria-label="Previous set"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><button data-a="show-nav" data-v="1" aria-label="Next set"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button></div></div>
         <div class="sh-ed-row">
           <div class="sh-step"><button data-a="show-step" data-v="w:-1" aria-label="Less weight">−</button>
@@ -4070,6 +4072,7 @@ function webApp() {
       A.done(`${tg.ei}:${tg.si}`);   // logging moves the current set on; undoing stays on it
       updateShow();
     },
+    "show-pv": (v) => openPreview(v),   // the same 10-second preview as on the workout screen, over the show
     "show-pane": () => { S.showPane = S.showPane === "plan" ? "lift" : "plan"; updateShow(); },
     "show-pick": (v) => {
       const [ei, si] = v.split(":").map(Number);
@@ -4538,7 +4541,14 @@ body.restgo::after{content:"";position:fixed;inset:0;z-index:30;pointer-events:n
 .sh-mini-i{position:absolute;inset:0;display:grid;place-items:center;color:#5a636c;font:800 16px var(--display);z-index:0}
 .sh-mini img{z-index:1}
 .sh-ed-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.sh-ed-name b{font:800 17px/1.15 var(--display);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh-ed-name b,.sh-ed-nb{font:800 17px/1.15 var(--display);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh-ed-nb{display:block;max-width:100%;padding:0;background:none;color:#fff;text-align:left}
+.sh-mini-btn{position:relative;flex:none;padding:0;background:none;border-radius:10px}
+.sh-mini-btn .sh-mini{display:block}
+.sh-mini-play{position:absolute;right:-4px;bottom:-4px;z-index:2;width:22px;height:22px;border-radius:11px;background:var(--accent);color:#fff;font-size:10px;line-height:22px;text-align:center;box-shadow:0 0 0 2px #181b20}
+body.show-open #pv [data-a="pv-open"]{display:none}
+body.show-open #pv .pv-actions{display:flex;grid-template-columns:1fr}
+body.show-open #pv .pv-actions button{flex:1;width:100%}
 .sh-ed-name>span{font-size:13px;color:rgba(255,255,255,.7)}
 .sh-ed-nav{display:flex;gap:6px}
 .sh-ed-nav button{width:36px;height:36px;border-radius:18px;background:rgba(255,255,255,.12);display:grid;place-items:center}
@@ -4598,7 +4608,7 @@ body.is-dragging{-webkit-user-select:none;user-select:none}
 .dl-meta{flex:1;min-width:0;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:calc(13px * var(--ts))}
 .dl-meta .dot{display:inline-block;vertical-align:-1px;margin-right:4px}
 .plan-ex.pv-row{grid-template-columns:64px 1fr 34px}
-#pv{position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px}
+#pv{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px}
 .pv-card{width:100%;max-width:440px;background:var(--surface);color:var(--ink);border-radius:18px;padding:14px 14px 10px;box-shadow:0 12px 40px rgba(0,0,0,.35);overflow:hidden}
 .pv-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px}
 .pv-head b{font:800 calc(21px * var(--ts))/1.15 var(--display)}
