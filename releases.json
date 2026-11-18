@@ -4,6 +4,25 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.22.1",
+      "date": "2026-11-18",
+      "title": "Smooth gallery",
+      "highlights": [
+        {
+          "icon": "🎞",
+          "title": "Smooth switching",
+          "text": "Picking another exercise in the gallery glides straight to it, with no flicker."
+        }
+      ],
+      "changes": [
+        "The filmstrip stays in place when you switch: the highlight moves and the strip glides only as far as needed",
+        "The page keeps its scroll position, and the new photo fades in"
+      ],
+      "fixes": [
+        "Switching exercises in the gallery redrew the filmstrip and replayed its scroll from the first thumbnail"
+      ]
+    },
+    {
       "version": "1.22.0",
       "date": "2026-11-18",
       "title": "Exercise gallery",

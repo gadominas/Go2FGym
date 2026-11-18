@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.22.0';
+const VERSION = '1.22.1';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -2753,11 +2753,29 @@ function webApp() {
     render();
   }
   let galIo = null;
-  function galleryAfterRender() {
-    const strip = $("#gal-strip");
+  function galleryAfterRender(k) {
+    let strip = $("#gal-strip");
     if (!strip) return;
+    if (k && k.keep && k.keep !== strip && k.keep.childElementCount === strip.childElementCount) {
+      strip.replaceWith(k.keep);   // the same thumbnails, already loaded and where they were
+      strip = k.keep;
+      strip.scrollLeft = k.left;
+      strip.querySelectorAll(".gal-th").forEach((t) => {
+        const cur = t.dataset.v === S.detailId;
+        t.classList.toggle("cur", cur);
+        if (cur) t.setAttribute("aria-current", "true"); else t.removeAttribute("aria-current");
+        const box = t.querySelector(".gal-img"), ok = box && box.querySelector(".gal-ok"), on = inSession(t.dataset.v);
+        if (on && !ok && box) box.insertAdjacentHTML("beforeend", '<i class="gal-ok">✓</i>');
+        if (!on && ok) ok.remove();
+      });
+    } else k = null;
     const cur = strip.querySelector(".gal-th.cur");
-    if (cur) strip.scrollLeft = cur.offsetLeft - (strip.clientWidth - cur.offsetWidth) / 2;   // keep the current one centred
+    const target = cur ? cur.offsetLeft - (strip.clientWidth - cur.offsetWidth) / 2 : 0;
+    if (k && k.switched) {
+      strip.scrollTo({ left: target, behavior: "smooth" });   // glide from where it is to the new one
+      const st = $(".det-stage");
+      if (st) st.classList.add("swap");
+    } else if (!k) strip.scrollLeft = target;   // first open: centred at once; other redraws keep the user's scroll
     const g = galleryState();
     [g.ids[g.i - 1], g.ids[g.i + 1]].forEach((id) => id && want(id));   // neighbours ready for a quick swipe
     if (galIo) galIo.disconnect();
@@ -3727,6 +3745,9 @@ function webApp() {
     const same = currentKey === key;
     const y = window.scrollY;
     if (currentKey && !same) S.scroll[currentKey] = y;
+    // Switching exercises inside the gallery keeps the filmstrip itself (no redraw, no flicker) and the page position.
+    const keepStrip = S.detailId && currentKey && currentKey.startsWith("detail:") && key.startsWith("detail:") ? $("#gal-strip") : null;
+    const gk = keepStrip ? { keep: keepStrip, left: keepStrip.scrollLeft, switched: !same } : null;
     $app.innerHTML = !S.consent || S.showDisclaimer ? renderDisclaimer()
       : S.detailId ? renderDetail()
       : S.tab === "train" ? (!S.lib.length ? renderHome() : S.trainView === "list" ? renderList() : S.trainView === "ai" ? renderBuilder() : S.trainView === "plan" ? renderPlan() : renderHome())
@@ -3735,9 +3756,9 @@ function webApp() {
     else $tabs.innerHTML = "";
     updateLast();
     if ($("#show")) updateShow();
-    window.scrollTo(0, same ? y : key.startsWith("detail:") ? 0 : S.scroll[key] || 0);
+    window.scrollTo(0, same || (gk && gk.switched) ? y : key.startsWith("detail:") ? 0 : S.scroll[key] || 0);
     currentKey = key;
-    if (S.detailId) { want(S.detailId); galleryAfterRender(); }
+    if (S.detailId) { want(S.detailId); galleryAfterRender(gk); }
     else if (S.tab === "train" && (S.trainView === "list" || S.trainView === "plan")) observeThumbs();
   }
 
@@ -4485,7 +4506,7 @@ body.is-dragging{-webkit-user-select:none;user-select:none}
 .gal-add{position:absolute;top:8px;right:8px;z-index:2;padding:7px 12px;border-radius:999px;background:var(--accent);color:#fff;font:700 calc(14px * var(--ts))/1 var(--body);box-shadow:0 2px 8px rgba(0,0,0,.25)}
 .gal-add.on{background:var(--done)}
 .gal{margin:2px 0 10px}
-.gal-strip{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 6px;scroll-behavior:smooth;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
+.gal-strip{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
 .gal-strip::-webkit-scrollbar{display:none}
 .gal-th{flex:none;width:76px;display:flex;flex-direction:column;gap:4px;text-align:left;scroll-snap-align:center;opacity:.72}
 .gal-th.cur{opacity:1}
@@ -4493,6 +4514,10 @@ body.is-dragging{-webkit-user-select:none;user-select:none}
 .gal-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}
 .gal-in{font:800 15px var(--display);color:var(--muted)}
 .gal-th.cur .gal-img{box-shadow:0 0 0 3px var(--accent)}
+.gal-img{transition:box-shadow .2s ease}.gal-th{transition:opacity .2s ease}
+.det-stage.swap{animation:galin .28s ease}
+@keyframes galin{from{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.det-stage.swap{animation:none}}
 .gal-ok{position:absolute;right:3px;bottom:3px;width:18px;height:18px;border-radius:9px;background:var(--done);color:#fff;font:800 11px/18px var(--body);text-align:center;font-style:normal}
 .gal-name{font-size:calc(11px * var(--ts));line-height:1.2;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .gal-count{margin:2px 0 0;font-size:calc(12px * var(--ts));color:var(--muted)}

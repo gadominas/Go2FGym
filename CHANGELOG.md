@@ -2,6 +2,19 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.22.1 (2026-11-18): Smooth gallery
+
+- 🎞 **Smooth switching**: Picking another exercise in the gallery glides straight to it, with no flicker.
+
+**Changes**
+
+- The filmstrip stays in place when you switch: the highlight moves and the strip glides only as far as needed
+- The page keeps its scroll position, and the new photo fades in
+
+**Fixes**
+
+- Switching exercises in the gallery redrew the filmstrip and replayed its scroll from the first thumbnail
+
 ## 1.22.0 (2026-11-18): Exercise gallery
 
 - 🎞 **Browse without going back**: A filmstrip under the photo shows the exercises you came from. Tap one to switch.
