@@ -46,7 +46,7 @@ const AI_INVITE = {
 
 // ---------------------------------------------------------------- version
 // This build's version. When releasing, bump it and add a matching entry to releases.json.
-const VERSION = '1.23.0';
+const VERSION = '1.24.0';
 const APP_ID = 'go2fgym';   // unique per app, never changes
 const REPO_RAW = 'https://raw.githubusercontent.com/gadominas/Go2FGym/main/';
 const SCRIPT_FILE = 'Go2FGym.js';   // the script's file name in the repository
@@ -1754,7 +1754,7 @@ function webApp() {
   }
   function startRest(seconds, activity) {
     const secs = seconds || CFG.rest;
-    S.rest = { end: Date.now() + secs * 1000, total: secs, beeped: false };
+    S.rest = { end: Date.now() + secs * 1000, total: secs, beeped: false, label: activity || "" };
     unlockAudio();   // inside the ✓ tap, so the beep may play later; mixes with other apps' audio
     if (silentBeepOn()) { audioOn("webaudio"); restSound = true; }   // opted in: the beep will play in silent mode
     const lbl = $("#rest .rest-label");   // a between-sets activity replaces the word "Rest"
@@ -3190,13 +3190,31 @@ function webApp() {
     if (res && res.caption && $("#show")) setCaption(String(res.caption).slice(0, 140), true);
   }
 
-  // The set being edited in the show: the one picked there, else the next set to do.
+  // The set you're on: kept with the workout (saved in the draft), so the show and a restart come back to it.
+  function setCur(ei, si) {
+    const en = S.session && S.session.entries[ei];
+    if (en) S.session.cur = { id: en.id, si: Math.max(0, Math.min(si, en.sets.length - 1)) };
+  }
+  // After a set is logged: the next open set of that exercise, else the next exercise with an open set.
+  function advanceCur(ei) {
+    const list = S.session.entries;
+    const own = list[ei].sets.findIndex((x) => !x.done);
+    if (own >= 0) return setCur(ei, own);
+    for (let k = 1; k <= list.length; k++) {
+      const j = (ei + k) % list.length, x = list[j];
+      const si = x.completed ? -1 : x.sets.findIndex((y) => !y.done);
+      if (si >= 0) return setCur(j, si);
+    }
+    setCur(ei, list[ei].sets.length - 1);
+  }
+  // The set being edited in the show: the current one, else the next set to do.
   function showTarget() {
     const list = S.session ? S.session.entries : [];
-    if (S.showSel) {
-      const ei = list.findIndex((x) => x.id === S.showSel.id);
-      if (ei >= 0 && S.showSel.si < list[ei].sets.length) return { ei, si: S.showSel.si, en: list[ei] };
-      S.showSel = null;
+    const cur = S.session && S.session.cur;
+    if (cur) {
+      const ei = list.findIndex((x) => x.id === cur.id);
+      if (ei >= 0 && cur.si < list[ei].sets.length) return { ei, si: cur.si, en: list[ei] };
+      S.session.cur = null;
     }
     const t = nextSetTarget();
     if (!t) return null;
@@ -3208,7 +3226,6 @@ function webApp() {
     if (!S.session || $("#show")) return;
     const t = liveTotals(S.session);
     S.showIdx = milestone(t.kg).i;
-    S.showSel = null;
     S.showPane = "lift";
     edKey = "";   // a new show has an empty editor: always draw it
     const el = document.createElement("div");
@@ -3218,6 +3235,9 @@ function webApp() {
     el.innerHTML = `<div class="sh-top"><button class="sh-x" data-a="show-close" aria-label="Back to the workout">
         <svg viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg></button>
       <span class="sh-live"><i></i>GO2FGYM LIVE</span><b id="sh-clock" class="sh-clock"></b></div>
+      <div class="sh-restbar" id="sh-restbar" hidden><i class="sh-rb-fill"></i>
+        <span class="sh-rb-l"><b id="sh-rb-time">0:00</b><span id="sh-rb-sub">Rest</span></span>
+        <button data-a="rest-add" aria-label="Rest 30 seconds longer">+30 s</button><button data-a="rest-skip" aria-label="Skip the rest">Skip</button></div>
       <div class="sh-stage" id="sh-stage">
         <button class="sh-pane-btn" id="sh-pane-btn" data-a="show-pane"></button>
         <div class="sh-lift" id="sh-lift">
@@ -3251,6 +3271,31 @@ function webApp() {
     localCaption();
     clearInterval(capTimer);
     capTimer = setInterval(localCaption, 9000);
+  }
+  // The rest banner in the show: countdown and a draining bar, then GO! with the next set.
+  function showRest() {
+    const bar = $("#sh-restbar");
+    if (!bar) return;
+    const sh = $("#show");
+    const left = S.rest.end ? Math.ceil((S.rest.end - Date.now()) / 1000) : 0;
+    if (!S.rest.end) { bar.hidden = true; bar.classList.remove("go"); sh.classList.remove("resting"); return; }
+    bar.hidden = false;
+    if (left > 0) {
+      bar.classList.remove("go");
+      sh.classList.add("resting");
+      $("#sh-rb-time").textContent = mmss(left);
+      const tg = showTarget();
+      $("#sh-rb-sub").textContent = `Rest${S.rest.label ? ` · ${S.rest.label}` : ""}${tg ? ` · next: ${tg.en.name}, set ${tg.si + 1}` : ""}`;
+      bar.style.setProperty("--p", String(Math.max(0, Math.min(1, left / (S.rest.total || 1)))));
+    } else if (!bar.classList.contains("go")) {
+      sh.classList.remove("resting");
+      bar.classList.add("go");
+      $("#sh-rb-time").textContent = "GO!";
+      const tg = showTarget();
+      $("#sh-rb-sub").textContent = tg ? `${tg.en.name} · set ${tg.si + 1}` : "Next set";
+      bar.style.setProperty("--p", "0");
+      sh.classList.remove("flash"); void sh.offsetWidth; sh.classList.add("flash");   // time's up: a green flash over the show
+    }
   }
   function showEdited() {   // a value changed in the show: save it, refresh totals; the workout re-renders on close
     S.showDirty = true;
@@ -3892,6 +3937,8 @@ function webApp() {
           if (restSound) { restSound = false; audioOffSoon(2000); }   // after the beep, other music can play again
           el.classList.add("go");
           el.querySelector(".rest-time").textContent = "Go";
+          document.body.classList.remove("restgo"); void document.body.offsetWidth; document.body.classList.add("restgo");
+          setTimeout(() => document.body.classList.remove("restgo"), 1800);
           el.style.setProperty("--p", "1");
         }
         if (now - S.rest.end > 4000) S.rest.end = 0;
@@ -3909,6 +3956,7 @@ function webApp() {
     if (shc && S.session) shc.textContent = clock(S.session.start);
     const shr = $("#sh-rest");
     if (shr) { const left = S.rest.end ? Math.ceil((S.rest.end - Date.now()) / 1000) : 0; shr.textContent = left > 0 ? `Rest ${mmss(left)}` : ""; }
+    showRest();
   }
 
   // ------------------------------------------------ interactions
@@ -4019,8 +4067,7 @@ function webApp() {
       if (!tg) return;
       const set = tg.en.sets[tg.si];
       if (!set.done && !(set.r > 0)) return;
-      A.done(`${tg.ei}:${tg.si}`);
-      if (set.done) S.showSel = null;   // logged: move on to the next set; undone: stay on it
+      A.done(`${tg.ei}:${tg.si}`);   // logging moves the current set on; undoing stays on it
       updateShow();
     },
     "show-pane": () => { S.showPane = S.showPane === "plan" ? "lift" : "plan"; updateShow(); },
@@ -4029,7 +4076,7 @@ function webApp() {
       const en = S.session.entries[ei];
       if (!en) return;
       const s2 = si >= 0 ? si : Math.max(0, en.sets.findIndex((x) => !x.done));
-      S.showSel = { id: en.id, si: s2 < 0 ? en.sets.length - 1 : s2 };
+      setCur(ei, s2 < 0 ? en.sets.length - 1 : s2);
       if (en.completed) { en.completed = false; en.active = true; delete en.doneAt; }
       S.focusId = en.id;
       showEdited();
@@ -4039,7 +4086,7 @@ function webApp() {
       const prev = en.sets[en.sets.length - 1];
       en.sets.push({ w: prev ? prev.w : null, r: prev ? prev.r : null, done: false });
       if (en.completed) { en.completed = false; en.active = true; delete en.doneAt; }
-      S.showSel = { id: en.id, si: en.sets.length - 1 };
+      setCur(+v, en.sets.length - 1);
       S.focusId = en.id;
       showEdited();
     },
@@ -4050,7 +4097,7 @@ function webApp() {
       S.session.entries.forEach((en, ei) => { if (!en.completed || ei === tg.ei) en.sets.forEach((_, si) => flat.push([ei, si])); });
       const i = flat.findIndex(([a, b]) => a === tg.ei && b === tg.si);
       const nx = flat[(i + Number(v) + flat.length) % flat.length];
-      if (nx) { S.showSel = { id: S.session.entries[nx[0]].id, si: nx[1] }; edKey = ""; updateShow(); }
+      if (nx) { setCur(nx[0], nx[1]); saveDraft(); edKey = ""; updateShow(); }
     },
     "show-step": (v) => {
       const tg = showTarget();
@@ -4071,8 +4118,9 @@ function webApp() {
         set.t = Date.now();
         en.startedAt = en.startedAt || set.t;
         S.focusId = en.id;
+        advanceCur(ei);
         startRest(en.rest, en.between ? shortActivity(en.between) : "");
-      }
+      } else setCur(ei, si);
       saveDraft();
       render();
     },
@@ -4110,7 +4158,7 @@ function webApp() {
     }),
     "rest-add": () => {
       const base = Math.max(S.rest.end, Date.now());
-      S.rest = { end: base + 30000, total: Math.max(S.rest.total, Math.ceil((base + 30000 - Date.now()) / 1000)), beeped: false };
+      S.rest = { end: base + 30000, total: Math.max(S.rest.total, Math.ceil((base + 30000 - Date.now()) / 1000)), beeped: false, label: S.rest.label || "" };
       unlockAudio();
       if (silentBeepOn()) { audioOn("webaudio"); restSound = true; }
       tick();
@@ -4196,6 +4244,7 @@ function webApp() {
     if (!set) return;
     const n = num(t.value);
     set[k] = k === "r" ? (n == null ? null : Math.round(n)) : n;
+    if (!set.done) setCur(+t.dataset.ei, +t.dataset.si);
     if (set.done) updateWStats();
     saveDraft();
   });
@@ -4450,6 +4499,22 @@ body.show-open{overflow:hidden}
 .sh-rest{display:block;font:700 13px/1.1 var(--body);color:#ffcc00;min-height:13px}
 .sh-log{display:flex;flex-direction:column;align-items:center;gap:3px;padding:11px;border-radius:14px;background:#2e8b3e;color:#fff;text-align:center;width:100%}
 .sh-log.undo{background:rgba(255,255,255,.14)}
+.sh-restbar{position:relative;display:flex;align-items:center;gap:8px;padding:8px 10px 8px 14px;border-radius:14px;background:#1f2a44;overflow:hidden;flex:none}
+.sh-restbar[hidden]{display:none}
+.sh-rb-fill{position:absolute;inset:0 auto 0 0;width:calc(var(--p,1) * 100%);background:linear-gradient(90deg,#2b5bd7,#4f8cff);transition:width .3s linear}
+.sh-rb-l{position:relative;flex:1;min-width:0;display:flex;flex-direction:column}
+.sh-rb-l b{font:800 30px/1 var(--display);font-variant-numeric:tabular-nums}
+.sh-rb-l span{font-size:12.5px;color:rgba(255,255,255,.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh-restbar button{position:relative;flex:none;padding:9px 12px;border-radius:999px;background:rgba(0,0,0,.35);color:#fff;font:700 14px/1 var(--body)}
+.sh-restbar.go{background:#1f8a3c;animation:shgo .6s ease 3}
+.sh-restbar.go .sh-rb-fill{display:none}
+@keyframes shgo{50%{transform:scale(1.03);box-shadow:0 0 24px 4px rgba(46,200,90,.7)}}
+#show.resting .sh-stage{box-shadow:inset 0 0 0 2px #4f8cff}
+#show.flash::after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 6px #2ec85a,inset 0 0 80px rgba(46,200,90,.55);animation:shflash 1.6s ease forwards}
+@keyframes shflash{0%,30%{opacity:1}100%{opacity:0}}
+body.restgo::after{content:"";position:fixed;inset:0;z-index:30;pointer-events:none;box-shadow:inset 0 0 0 6px #2ec85a,inset 0 0 70px rgba(46,200,90,.5);animation:shflash 1.6s ease forwards}
+#rest.go{animation:shgo .6s ease 3}
+@media (prefers-reduced-motion:reduce){.sh-restbar.go,#rest.go{animation:none}#show.flash::after,body.restgo::after{animation:none;opacity:0}}
 .sh-pane-btn{position:absolute;top:8px;right:8px;z-index:3;display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;background:rgba(0,0,0,.45);color:#fff;font:700 14px/1 var(--body);backdrop-filter:blur(6px)}
 .sh-pane-btn span{font-size:16px}
 .sh-lift{position:absolute;inset:0}.sh-lift[hidden],.sh-plan[hidden]{display:none}

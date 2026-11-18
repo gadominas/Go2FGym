@@ -2,6 +2,22 @@
 
 All notable changes to Go2FGym. Generated from `releases.json`; edit that file, not this one.
 
+## 1.24.0 (2026-11-18): Never lose your place
+
+- 📍 **Back where you left off**: The Lift show remembers your exercise and set, even after closing it or restarting.
+- ⏱ **Rest you can't miss**: A big rest banner with countdown, next set, +30 s and Skip sits on top of the show.
+- 🟢 **GO! when time's up**: A beep, a green GO! with your next set and a flash across the screen.
+
+**Changes**
+
+- The current exercise and set are kept with the workout: logging a set moves on to the next one, tapping or typing in a set makes it current, and the show opens there
+- The Lift show has a rest banner above the animation and the Workout view: big countdown, draining bar, the next set, +30 s and Skip
+- When the rest is over: the beep, a pulsing green GO! with the next exercise and set, and a green flash over the show; on other screens the rest bar pulses and the screen flashes
+
+**Fixes**
+
+- Reopening the Lift show jumped back to the first open exercise and set instead of the one you were on
+
 ## 1.23.0 (2026-11-18): Train for your goal
 
 - 🎯 **Pick your goal**: Running, sprinting, strength, aesthetics or bodybuilding: it steers every suggestion.

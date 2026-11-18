@@ -4,6 +4,36 @@
   "script": "Go2FGym.js",
   "releases": [
     {
+      "version": "1.24.0",
+      "date": "2026-11-18",
+      "title": "Never lose your place",
+      "highlights": [
+        {
+          "icon": "📍",
+          "title": "Back where you left off",
+          "text": "The Lift show remembers your exercise and set, even after closing it or restarting."
+        },
+        {
+          "icon": "⏱",
+          "title": "Rest you can't miss",
+          "text": "A big rest banner with countdown, next set, +30 s and Skip sits on top of the show."
+        },
+        {
+          "icon": "🟢",
+          "title": "GO! when time's up",
+          "text": "A beep, a green GO! with your next set and a flash across the screen."
+        }
+      ],
+      "changes": [
+        "The current exercise and set are kept with the workout: logging a set moves on to the next one, tapping or typing in a set makes it current, and the show opens there",
+        "The Lift show has a rest banner above the animation and the Workout view: big countdown, draining bar, the next set, +30 s and Skip",
+        "When the rest is over: the beep, a pulsing green GO! with the next exercise and set, and a green flash over the show; on other screens the rest bar pulses and the screen flashes"
+      ],
+      "fixes": [
+        "Reopening the Lift show jumped back to the first open exercise and set instead of the one you were on"
+      ]
+    },
+    {
       "version": "1.23.0",
       "date": "2026-11-18",
       "title": "Train for your goal",
